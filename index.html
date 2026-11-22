@@ -33,7 +33,7 @@
   h1 { font-size: 1.35rem; margin: 4px 0 2px; }
   .sub { color: var(--muted); font-size: .88rem; margin: 0 0 12px; }
   .tabs { display: flex; gap: 6px; background: var(--card); border: 1px solid var(--line); padding: 4px; border-radius: 12px; margin-bottom: 12px; }
-  .tabs button { flex: 1; border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 600; padding: 9px 4px; border-radius: 9px; cursor: pointer; }
+  .tabs button { flex: 1; min-width: 0; font-size: .92rem; border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 600; padding: 9px 4px; border-radius: 9px; cursor: pointer; }
   .tabs button[aria-selected="true"] { background: var(--accent); color: #fff; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); margin-bottom: 12px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
@@ -67,6 +67,11 @@
   .ev h4 { margin: 0 0 4px; font-size: .98rem; display: flex; justify-content: space-between; gap: 8px; }
   .ev .ln { display: flex; justify-content: space-between; gap: 8px; font-size: .88rem; color: var(--muted); padding: 1px 0; }
   .ev .ln span:last-child { color: var(--text); font-variant-numeric: tabular-nums; text-align: right; }
+  .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+  .win { color: var(--good); font-weight: 700; }
+  .cmp { display: grid; grid-template-columns: 1fr 1.1fr 1fr; gap: 4px 8px; font-size: .9rem; align-items: center; }
+  .cmp .l { color: var(--muted); text-align: center; font-size: .82rem; }
+  .cmp .a { text-align: left; } .cmp .b { text-align: right; } .cmp div { font-variant-numeric: tabular-nums; }
   .btn { border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: .88rem; padding: 6px 12px; border-radius: 10px; cursor: pointer; }
   .loading { color: var(--muted); padding: 14px 0; }
   .err { color: #c0392b; }
@@ -80,7 +85,8 @@
   <p class="sub" id="stamp">Loading…</p>
   <div class="tabs" role="tablist">
     <button role="tab" data-tab="sum">Sum of Ranks</button>
-    <button role="tab" data-tab="kinch">Kinch Ranks</button>
+    <button role="tab" data-tab="kinch">Kinch</button>
+    <button role="tab" data-tab="events">Events</button>
     <button role="tab" data-tab="lookup">Lookup</button>
   </div>
   <div id="view"></div>
@@ -93,6 +99,7 @@ const $ = (s, r = document) => r.querySelector(s);
 function el(tag, attrs, ...kids) {
   const e = document.createElement(tag);
   for (const k in (attrs || {})) {
+    if (attrs[k] == null) continue;
     if (k === "class") e.className = attrs[k];
     else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]);
     else e.setAttribute(k, attrs[k]);
@@ -122,8 +129,12 @@ try { profile = JSON.parse(store("profile") || "null"); } catch (e) { profile = 
 if (profile && !profile.id) profile = null;
 
 const ST = {
-  tab: "sum", kind: store("kind") || "C", scope: store("scope") || "w", cont: +store("cont") || 0, country: store("country"),
+  tab: "sum", nb: store("nb") === "1", imp: +store("imp") || 5, kind: store("kind") || "C", scope: store("scope") || "w", cont: +store("cont") || 0, country: store("country"),
 };
+const vOf = p => ST.nb ? p.nb : p.all;
+const NEV = () => ST.nb ? META.events.length - META.excl.length : META.events.length;
+const isEx = ev => ST.nb && META.excl.includes(ev);
+function flash(btn, msg) { const t = btn.textContent; btn.textContent = msg; setTimeout(() => btn.textContent = t, 1800); }
 const SCOPES = [["w", "World"], ["c", "Continent"], ["n", "Country"]];
 
 /* ---------- formatting ---------- */
@@ -181,12 +192,12 @@ async function loadPerson(id) {
       const f = s.split(",");
       evs[+f[0]] = { s: [b36(f[1]), b36(f[2]), b36(f[3]), b36(f[4])], a: [b36(f[5]), b36(f[6]), b36(f[7]), b36(f[8])] };
     });
-    const out = {
-      id, name: p[1], country: b36(p[2]), evs,
-      kin: [h[0], h[1], h[2]], kinRank: [h[3], h[4], h[5]],
-      sum: { S: [h[6], h[7], h[8]], A: [h[9], h[10], h[11]], C: [h[12], h[13], h[14]] },
-      sumRank: { S: [h[15], h[16], h[17]], A: [h[18], h[19], h[20]], C: [h[21], h[22], h[23]] },
-    };
+    const mk = o => ({
+      kin: [h[o], h[o + 1], h[o + 2]], kinRank: [h[o + 3], h[o + 4], h[o + 5]],
+      sum: { S: [h[o + 6], h[o + 7], h[o + 8]], A: [h[o + 9], h[o + 10], h[o + 11]], C: [h[o + 12], h[o + 13], h[o + 14]] },
+      sumRank: { S: [h[o + 15], h[o + 16], h[o + 17]], A: [h[o + 18], h[o + 19], h[o + 20]], C: [h[o + 21], h[o + 22], h[o + 23]] },
+    });
+    const out = { id, name: p[1], country: b36(p[2]), evs, all: mk(0), nb: mk(24) };
     out.cont = META.countries[out.country][1];
     personCache.set(id, out);
     return out;
@@ -254,7 +265,12 @@ function scopeControls(rerender) {
       order.map(([n, i]) => el("option", { value: i }, n)));
     s.value = ST.country; row.append(s);
   }
+  row.append(nbToggle(rerender));
   return row;
+}
+function nbToggle(rerender) {
+  return el("button", { class: "btn", "aria-pressed": ST.nb ? "true" : "false", title: "Leave out 3x3 BLD, 4x4 BLD, 5x5 BLD and Multi-Blind",
+    onclick: () => { ST.nb = !ST.nb; store("nb", ST.nb ? "1" : "0"); rerender(); } }, (ST.nb ? "☑" : "☐") + " No blindfolded");
 }
 const scopeIdx = () => ST.scope === "w" ? 0 : ST.scope === "c" ? ST.cont : ST.country;
 const scopeName = () => ST.scope === "w" ? "World" : ST.scope === "c" ? META.conts[ST.cont] : META.countries[ST.country][0];
@@ -273,7 +289,7 @@ async function renderBoard(metric) {
   head.push(scopeControls(draw));
   card.append(...head, box);
   view.append(card);
-  const key = metric === "k" ? "k" : ST.kind;
+  const key = (metric === "k" ? "k" : ST.kind) + (ST.nb ? "2" : "");
   let lb;
   try { lb = (await loadLB(ST.scope, scopeIdx()))[key]; } catch (e) { box.className = "err"; box.textContent = "Couldn't load this list. Try again in a moment."; return; }
   if (!lb || !lb.length) { box.textContent = "No ranked competitors here yet."; return; }
@@ -300,8 +316,9 @@ async function renderBoard(metric) {
   card.append(more);
   const lim = lb.length;
   card.append(el("p", { class: "note" }, "Top " + lim + " for " + scopeName() + ". " +
-    (metric === "k" ? "Kinch score is the average of your per-event scores (record ÷ your PR, 17 events, missing events score 0)."
+    (metric === "k" ? "Kinch score is the average of your per-event scores (record ÷ your PR, " + NEV() + " events, missing events score 0)."
       : "Lower is better. Events you haven't done count as one rank past the last ranked person.") +
+    (ST.nb ? " Blindfolded events and Multi-Blind are left out." : "") +
     " Tap anyone to open their profile."));
   if (me) {
     const p = await loadPerson(me).catch(() => null);
@@ -309,14 +326,15 @@ async function renderBoard(metric) {
       const s = ST.scope === "w" ? 0 : ST.scope === "c" ? 1 : 2;
       const inScope = s === 0 || (s === 1 ? p.cont === ST.cont : p.country === ST.country);
       if (inScope && !lb.some(r => r[1] === me)) {
-        const rk = metric === "k" ? p.kinRank[s] : p.sumRank[key][s];
+        const v = vOf(p), rk = metric === "k" ? v.kinRank[s] : v.sumRank[key.replace("2", "")][s];
         card.append(el("p", { class: "note" }, "You (" + p.name + ") are " + nth(rk) + " here."));
       }
     }
   }
 }
 
-function summaryCard(p) {
+function summaryCard(p0) {
+  const p = Object.assign({}, p0, vOf(p0));
   const labels = [["World", 0], ["Continent · " + META.conts[p.cont], 1], ["Country · " + META.countries[p.country][0], 2]];
   const pop = [META.pop.w, META.pop.c[p.cont], META.pop.n[p.country]];
   const block = (title, valFn, rankFn, big) => el("div", { class: "card" },
@@ -324,10 +342,10 @@ function summaryCard(p) {
     labels.map(([l, s]) => el("div", { class: "scope" }, el("span", {}, l),
       el("span", {}, el("b", {}, valFn(s)), " ", el("span", { class: "pill" }, nth(rankFn(s)) + " of " + n0(pop[s]))))));
   return el("div", { class: "grid" },
-    block("Kinch Ranks", s => fmtK(p.kin[s]), s => p.kinRank[s]),
-    block("Sum of Ranks · Combined", s => n0(p.sum.C[s]), s => p.sumRank.C[s]),
-    block("Sum of Ranks · Single", s => n0(p.sum.S[s]), s => p.sumRank.S[s]),
-    block("Sum of Ranks · Average", s => n0(p.sum.A[s]), s => p.sumRank.A[s]));
+    block("Kinch Ranks" + (ST.nb ? " · no blindfolded" : ""), s => fmtK(p.kin[s]), s => p.kinRank[s]),
+    block("Sum of Ranks · Combined" + (ST.nb ? " · no BLD" : ""), s => n0(p.sum.C[s]), s => p.sumRank.C[s]),
+    block("Sum of Ranks · Single" + (ST.nb ? " · no BLD" : ""), s => n0(p.sum.S[s]), s => p.sumRank.S[s]),
+    block("Sum of Ranks · Average" + (ST.nb ? " · no BLD" : ""), s => n0(p.sum.A[s]), s => p.sumRank.A[s]));
 }
 
 function eventsCard(p, si) {
@@ -339,8 +357,8 @@ function eventsCard(p, si) {
     const e = p.evs[ev];
     const ks = e ? kscore(ev, e, si, p) : 0;
     const rk = (r) => r[si] ? nth(r[si]) : "—";
-    const node = el("div", { class: "ev" },
-      el("h4", {}, el("span", {}, META.names[ev]), el("span", { class: "pill" }, "Kinch " + ks.toFixed(2))));
+    const node = el("div", { class: "ev", style: isEx(ev) ? "opacity:.4" : "" },
+      el("h4", {}, el("span", {}, META.names[ev] + (isEx(ev) ? " (left out)" : "")), el("span", { class: "pill" }, "Kinch " + ks.toFixed(2))));
     if (!e) node.append(el("div", { class: "ln" }, el("span", {}, "No result"), el("span", {}, "counts as last + 1")));
     else {
       node.append(el("div", { class: "ln" }, el("span", {}, "Single " + fmtVal(ev, false, e.s[3])), el("span", {}, e.s[3] ? rk(e.s) : "no rank")));
@@ -368,19 +386,119 @@ async function showPerson(id) {
     el("div", { class: "flag" }, id + " · " + META.countries[p.country][0] + " · " + META.conts[p.cont]),
     el("div", { class: "row", style: "margin-top:10px;margin-bottom:0" },
       el("button", { class: "btn", onclick: () => { profile = { id, name: p.name }; store("profile", JSON.stringify(profile)); showPerson(id); } }, isMe ? "✓ This is me" : "This is me"),
+      el("button", { class: "btn", onclick: () => go("#compare/" + id) }, "Compare"),
+      el("button", { class: "btn", onclick: e => saveCard(e.target, p) }, "Save image"),
+      nbToggle(() => showPerson(id)),
       el("a", { class: "btn", href: "https://www.worldcubeassociation.org/persons/" + id, target: "_blank", rel: "noopener", style: "text-decoration:none" }, "WCA profile")));
   const si = +store("lscope") || 0;
-  host.replaceChildren(top, summaryCard(p), el("div", { class: "events-host" }, eventsCard(p, si)));
+  host.replaceChildren(top, summaryCard(p), el("div", { class: "improve-host" }, improveCard(p)), el("div", { class: "events-host" }, eventsCard(p, si)));
   lookupHost = host;
 }
 function renderLookup(id) {
   setTab("lookup");
   view.replaceChildren();
-  const input = el("input", { type: "search", placeholder: "Search by name or WCA ID", autocomplete: "off", enterkeyhint: "search" });
-  const results = el("div");
-  const card = el("div", { class: "card" }, input, results);
   const person = el("div", { id: "person" });
-  view.append(card, person);
+  view.append(searchBox(pid => go("#lookup/" + pid)), person);
+  const target = id || (profile && profile.id);
+  if (target) { if (!id) history.replaceState(null, "", "#lookup/" + target); showPerson(target); }
+  else person.append(el("p", { class: "note" }, "Search for yourself to see your Kinch score and Sum of Ranks in your country, continent and the world, plus a rank for every event."));
+}
+
+/* ---------- events (standard rankings) ---------- */
+async function renderEvents() {
+  setTab("events");
+  view.replaceChildren();
+  const ev = +(store("ev") || 0), k = +(store("evk") || 0);
+  const card = el("div", { class: "card" });
+  const draw = () => renderEvents();
+  const evSel = el("select", { onchange: e => { store("ev", e.target.value); if (!META.avg[+e.target.value]) store("evk", "0"); draw(); } },
+    META.names.map((n, i) => el("option", { value: i }, n)));
+  evSel.value = ev;
+  const kk = META.avg[ev] ? k : 0;
+  const seg = el("div", { class: "seg" }, [["Single", 0], ["Average", 1]].map(([l, v]) =>
+    el("button", { "aria-pressed": kk === v ? "true" : "false", disabled: v === 1 && !META.avg[ev] ? "" : null, onclick: () => { store("evk", v); draw(); } }, l)));
+  card.append(el("div", { class: "row" }, evSel, seg), scopeControls(draw));
+  card.querySelectorAll("button").forEach(b => { if (b.textContent.includes("No blindfolded")) b.remove(); });
+  const box = el("div", { class: "loading" }, "Loading…");
+  card.append(box); view.append(card);
+  const sk = ST.scope === "w" ? "w" : (ST.scope === "c" ? "c" + ST.cont : "n" + ST.country);
+  let txt;
+  try { txt = await getRetry("ev/" + ev + "_" + kk + "_" + sk + ".txt"); }
+  catch (e) { box.className = "loading"; box.textContent = "No ranked results here yet."; return; }
+  const rows = txt.split("\n").filter(Boolean).map(l => { const f = l.split("|"); return { id: f[0], name: f[1], ctry: b36(f[2]), v: b36(f[3]) }; });
+  let prev = null, rk = 0;
+  rows.forEach((r, i) => { if (r.v !== prev) { rk = i + 1; prev = r.v; } r.rk = rk; });
+  rows.forEach((r, i) => { r.tie = (rows[i - 1] && rows[i - 1].rk === r.rk) || (rows[i + 1] && rows[i + 1].rk === r.rk); });
+  const t = el("table"), body = el("tbody");
+  t.append(el("thead", {}, el("tr", {}, el("th", {}, "#"), el("th", {}, "Name"), el("th", { class: "num" }, kk ? "Average" : "Single"))), body);
+  const me = profile && profile.id;
+  let shown = 0;
+  const more = el("button", { class: "btn", style: "margin-top:10px", onclick: () => add() }, "Show more");
+  const add = () => {
+    const end = Math.min(rows.length, shown + 100);
+    rows.slice(shown, end).forEach(r => body.append(el("tr", { class: "go" + (me === r.id ? " me" : ""), onclick: () => go("#lookup/" + r.id) },
+      el("td", { class: "rk" + (r.rk <= 3 ? " top" : "") }, (r.tie ? "T-" : "") + r.rk),
+      el("td", {}, r.name, " ", el("span", { class: "flag" }, ST.scope === "n" ? "" : META.countries[r.ctry][0])),
+      el("td", { class: "num" }, fmtVal(ev, !!kk, r.v)))));
+    shown = end; more.style.display = shown >= rows.length ? "none" : "";
+  };
+  box.replaceWith(t); add(); card.append(more,
+    el("p", { class: "note" }, "Top " + n0(rows.length) + " for " + META.names[ev] + " " + (kk ? "average" : "single") + " in " + scopeName() + ". Ties share a rank."));
+}
+
+/* ---------- where could you gain the most? ---------- */
+function estRank(k, ev, v) {
+  const g = META.grid[k][ev], at = META.grid_at;
+  if (!g || !g.length || !v) return null;
+  if (v <= g[0]) return 1;
+  for (let j = 1; j < g.length; j++) if (v <= g[j]) {
+    if (g[j] === g[j - 1]) return at[j];
+    const f = (v - g[j - 1]) / (g[j] - g[j - 1]);
+    return Math.exp(Math.log(at[j - 1]) + f * (Math.log(at[j]) - Math.log(at[j - 1])));
+  }
+  return at[g.length - 1] * 1.5;
+}
+function improveCard(p) {
+  const pct = ST.imp, card = el("div", { class: "card" });
+  const seg = el("div", { class: "seg" }, [3, 5, 10].map(x => el("button", { "aria-pressed": pct === x ? "true" : "false",
+    onclick: () => { ST.imp = x; store("imp", x); const h = $(".improve-host"); if (h) h.replaceChildren(improveCard(p)); } }, x + "%")));
+  card.append(el("div", { class: "row", style: "justify-content:space-between" }, el("b", {}, "Where you'd gain most"), seg));
+  const out = [], todo = [], nev = NEV();
+  META.events.forEach((id, ev) => {
+    if (isEx(ev) || id === "333mbf") return;
+    const e = p.evs[ev];
+    if (!e || (!e.s[3] && !e.a[3])) {
+      const c = META.cntw[ev]; let g = 0;
+      [0, 1].forEach(k => { if (k === 0 || META.avg[ev]) g += (c[k] || 0) / 2; });
+      if (g > 0) todo.push({ ev, g });
+      return;
+    }
+    const f = 1 - pct / 100; let d = 0;
+    const e2 = { s: e.s.slice(), a: e.a.slice() };
+    [["s", 0], ["a", 1]].forEach(([key, k]) => {
+      const v = e[key][3]; if (!v) return;
+      const v2 = key === "s" && id === "333fm" ? Math.max(1, Math.round(v * f)) : v * f;
+      e2[key][3] = v2;
+      const r1 = estRank(k, ev, v), r2 = estRank(k, ev, v2);
+      if (r1 != null && r2 != null) d += Math.max(0, r1 - r2);
+    });
+    out.push({ ev, d, dk: (kscore(ev, e2, 0, p) - kscore(ev, e, 0, p)) / nev });
+  });
+  out.sort((a, b) => b.d - a.d);
+  card.append(el("p", { class: "note", style: "margin-top:0" }, "If you got " + pct + "% faster in one event, here's roughly how much it would help your world totals."));
+  out.slice(0, 5).forEach(o => card.append(el("div", { class: "scope" }, el("span", {}, META.names[o.ev]),
+    el("span", {}, el("b", {}, "≈ " + n0(Math.round(o.d)) + " places"), " ", el("span", { class: "pill" }, "+" + o.dk.toFixed(2) + " Kinch")))));
+  todo.sort((a, b) => b.g - a.g);
+  if (todo.length) card.append(el("p", { class: "note" }, "Not done yet: a middle-of-the-pack result in " + todo.slice(0, 3).map(t => META.names[t.ev]).join(", ") +
+    " would be worth roughly " + n0(Math.round(todo[0].g)) + " places or more in the best case. Places are estimates from world averages."));
+  else card.append(el("p", { class: "note" }, "Places are estimates from the world rankings."));
+  return card;
+}
+
+/* ---------- search box (shared) ---------- */
+function searchBox(onPick, placeholder) {
+  const input = el("input", { type: "search", placeholder: placeholder || "Search by name or WCA ID", autocomplete: "off", enterkeyhint: "search" });
+  const results = el("div");
   let timer = 0, seq = 0;
   input.addEventListener("input", () => {
     clearTimeout(timer);
@@ -391,14 +509,116 @@ function renderLookup(id) {
       try { hits = await searchPeople(q); } catch (e) { hits = []; }
       if (my !== seq) return;
       if (hits === null) { results.replaceChildren(); return; }
-      results.replaceChildren(...(hits.length ? hits.map(h => el("div", { class: "hit", onclick: () => go("#lookup/" + h.id) },
+      results.replaceChildren(...(hits.length ? hits.map(h => el("div", { class: "hit", onclick: () => onPick(h.id) },
         el("span", {}, h.name), el("span", { class: "flag" }, h.id + " · " + h.country))) : [el("p", { class: "note" }, "No one found. Try a different spelling or a WCA ID.")]));
     }, 180);
   });
-  const target = id || (profile && profile.id);
-  if (target) { if (!id) history.replaceState(null, "", "#lookup/" + target); showPerson(target); }
-  else person.append(el("p", { class: "note" }, "Search for yourself to see your Kinch score and Sum of Ranks in your country, continent and the world, plus a rank for every event."));
+  return el("div", { class: "card" }, input, results);
 }
+
+/* ---------- compare ---------- */
+async function renderCompare(ia, ib) {
+  setTab("lookup");
+  view.replaceChildren();
+  let a, b;
+  try { a = await loadPerson(ia); b = ib ? await loadPerson(ib) : null; } catch (e) { view.append(el("div", { class: "err" }, "Couldn't load those profiles.")); return; }
+  if (!a) { view.append(el("div", { class: "err" }, "No ranked results found for " + ia + ".")); return; }
+  if (!b) {
+    view.append(searchBox(id => go("#compare/" + ia + "/" + id), "Compare " + a.name + " with…"),
+      el("button", { class: "btn", onclick: () => go("#lookup/" + ia) }, "Back"));
+    return;
+  }
+  const same = [true, a.cont === b.cont, a.country === b.country];
+  let si = Math.min(+store("cscope") || 0, same[2] ? 2 : same[1] ? 1 : 0);
+  if (!same[si]) si = 0;
+  const va = vOf(a), vb = vOf(b);
+  const card = el("div", { class: "card" });
+  const seg = el("div", { class: "seg" }, SCOPES.map(([k, l], i) => same[i] ? el("button", { "aria-pressed": si === i ? "true" : "false", onclick: () => { store("cscope", i); renderCompare(ia, ib); } }, l) : null));
+  card.append(el("div", { class: "row", style: "justify-content:space-between" }, el("b", {}, a.name + " vs " + b.name), seg, nbToggle(() => renderCompare(ia, ib))));
+  const g = el("div", { class: "cmp" });
+  const line = (label, x, y, lowWins, fa, fb) => {
+    const wa = x != null && y != null && x !== y && (lowWins ? x < y : x > y), wb = x != null && y != null && x !== y && !wa;
+    g.append(el("div", { class: "a" + (wa ? " win" : "") }, fa), el("div", { class: "l" }, label), el("div", { class: "b" + (wb ? " win" : "") }, fb));
+  };
+  g.append(el("div", { class: "a" }, el("b", {}, a.name)), el("div", { class: "l" }, SCOPES[si][1]), el("div", { class: "b" }, el("b", {}, b.name)));
+  line("Kinch", va.kin[si], vb.kin[si], false, fmtK(va.kin[si]) + "  " + nth(va.kinRank[si]), nth(vb.kinRank[si]) + "  " + fmtK(vb.kin[si]));
+  [["C", "Sum · Combined"], ["S", "Sum · Single"], ["A", "Sum · Average"]].forEach(([k, l]) =>
+    line(l, va.sum[k][si], vb.sum[k][si], true, n0(va.sum[k][si]) + "  " + nth(va.sumRank[k][si]), nth(vb.sumRank[k][si]) + "  " + n0(vb.sum[k][si])));
+  let wa = 0, wb = 0, tie = 0;
+  const evRows = [];
+  META.events.forEach((id, ev) => {
+    if (isEx(ev)) return;
+    const ea = a.evs[ev], eb = b.evs[ev];
+    const pairs = [["Single", ea && ea.s[3], eb && eb.s[3], false]];
+    if (META.avg[ev]) pairs.push(["Average", ea && ea.a[3], eb && eb.a[3], true]);
+    const key = pairs.length > 1 && pairs[1][1] && pairs[1][2] ? 1 : 0;
+    const [, x, y] = pairs[key];
+    if (x && y) { if (x < y) wa++; else if (y < x) wb++; else tie++; } else if (x && !y) wa++; else if (y && !x) wb++;
+    evRows.push([ev, pairs]);
+  });
+  card.append(el("p", { class: "note", style: "margin-top:0" }, a.name + " leads in " + wa + " events, " + b.name + " in " + wb + (tie ? ", " + tie + " tied" : "") + " (by average, or single when there's no average for both)."), g);
+  evRows.forEach(([ev, pairs]) => {
+    g.append(el("div", { class: "l", style: "grid-column:1/-1;text-align:left;margin-top:8px;font-weight:600;color:var(--text)" }, META.names[ev]));
+    pairs.forEach(([l, x, y]) => {
+      const better = x && y && x !== y ? (x < y ? "a" : "b") : (x && !y ? "a" : (!x && y ? "b" : ""));
+      g.append(el("div", { class: "a" + (better === "a" ? " win" : "") }, fmtVal(ev, l === "Average", x)), el("div", { class: "l" }, l), el("div", { class: "b" + (better === "b" ? " win" : "") }, fmtVal(ev, l === "Average", y)));
+    });
+  });
+  view.append(card, el("div", { class: "row" },
+    el("button", { class: "btn", onclick: () => go("#lookup/" + ia) }, "← " + a.name), el("button", { class: "btn", onclick: () => go("#lookup/" + ib) }, b.name + " →"),
+    el("button", { class: "btn", onclick: () => go("#compare/" + ia) }, "Change person")));
+}
+
+/* ---------- save as image ---------- */
+function rrect(g, x, y, w, h, r, fill) { g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); g.fillStyle = fill; g.fill(); }
+async function saveCard(btn, p0) {
+  const p = Object.assign({}, p0, vOf(p0));
+  const W = 1080, H = 1350, F = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, "#0b0f14"); bg.addColorStop(1, "#12212f");
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#58a6ff"; g.font = "700 30px " + F; g.fillText("CUBING RANKS", 72, 96);
+  g.fillStyle = "#e8ecf1"; g.font = "800 68px " + F;
+  let nm = p.name; while (g.measureText(nm).width > W - 144 && nm.length > 4) nm = nm.slice(0, -2);
+  g.fillText(nm === p.name ? nm : nm + "…", 72, 190);
+  g.fillStyle = "#98a3b1"; g.font = "400 30px " + F;
+  g.fillText(p.id + " · " + META.countries[p.country][0] + (ST.nb ? " · no blindfolded" : ""), 72, 240);
+  const scopes = [["World", 0], [META.conts[p.cont], 1], [META.countries[p.country][0], 2]];
+  const pop = [META.pop.w, META.pop.c[p.cont], META.pop.n[p.country]];
+  const block = (y, title, valFn, rkFn) => {
+    rrect(g, 72, y, W - 144, 330, 28, "#131921");
+    g.fillStyle = "#98a3b1"; g.font = "700 26px " + F; g.fillText(title.toUpperCase(), 108, y + 56);
+    scopes.forEach(([n, s], i) => {
+      const yy = y + 124 + i * 82;
+      g.fillStyle = "#98a3b1"; g.font = "400 30px " + F; g.fillText(n.length > 18 ? n.slice(0, 17) + "…" : n, 108, yy);
+      g.fillStyle = "#e8ecf1"; g.font = "800 44px " + F; g.textAlign = "right"; g.fillText(valFn(s), 660, yy + 4);
+      g.fillStyle = "#58a6ff"; g.font = "700 32px " + F; g.fillText("#" + n0(rkFn(s)) + " of " + n0(pop[s]), W - 108, yy);
+      g.textAlign = "left";
+    });
+  };
+  block(290, "Kinch score", s => fmtK(p.kin[s]), s => p.kinRank[s]);
+  block(650, "Sum of ranks · combined", s => n0(p.sum.C[s]), s => p.sumRank.C[s]);
+  const best = META.events.map((id, ev) => ({ ev, k: p.evs[ev] && !isEx(ev) ? kscore(ev, p.evs[ev], 0, p) : 0 })).sort((a, b) => b.k - a.k).slice(0, 3).filter(x => x.k > 0);
+  g.fillStyle = "#98a3b1"; g.font = "700 26px " + F; g.fillText("BEST EVENTS (WORLD KINCH)", 72, 1060);
+  best.forEach((x, i) => {
+    const xx = 72 + i * 316;
+    rrect(g, xx, 1090, 300, 130, 22, "#131921");
+    g.fillStyle = "#98a3b1"; g.font = "400 26px " + F; const n = META.names[x.ev]; g.fillText(n.length > 16 ? n.slice(0, 15) + "…" : n, xx + 24, 1138);
+    g.fillStyle = "#56d364"; g.font = "800 44px " + F; g.fillText(x.k.toFixed(1), xx + 24, 1192);
+  });
+  g.fillStyle = "#98a3b1"; g.font = "400 28px " + F;
+  g.fillText(location.host + location.pathname.replace(/index\.html$/, ""), 72, H - 52);
+  const blob = await new Promise(r => c.toBlob(r, "image/png"));
+  if (!blob) { flash(btn, "Couldn't make image"); return; }
+  const file = new File([blob], "cubing-ranks-" + p.id + ".png", { type: "image/png" });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; } }
+  catch (e) { if (e && e.name === "AbortError") return; }
+  const url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = file.name; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000); flash(btn, "Image saved");
+}
+
 function renderAbout() {
   setTab("");
   view.replaceChildren(el("div", { class: "card" },
@@ -406,13 +626,15 @@ function renderAbout() {
     el("p", {}, el("b", {}, "Sum of Ranks. "), "Add up your rank in every event. Single uses your best single in all 17 events, Average uses your best average in the 16 events that have one, and Combined adds both. If you haven't done an event, you're given one rank past the last ranked person in that event, so skipping an event never helps. Lower is better. Ties share the best rank."),
     el("p", {}, el("b", {}, "Kinch Ranks. "), "For each event, your score is the record ÷ your personal best × 100 (so the record holder scores 100). Your Kinch score is the average of all 17 events, with 0 for events you haven't done. Events use averages, except the blindfolded events (best of single or average ratio), Fewest Moves (average), and Multi-Blind (points and time). Higher is better."),
     el("p", {}, el("b", {}, "Continent and country. "), "The same math applies inside each region: the record is the best in that region, and ranks are among people from that region."),
-    el("p", {}, "Rankings are built nightly from the WCA results export. Leaderboards list the top 1,000 for the world and continents and the top 500 for countries; Lookup works for everyone."),
+    el("p", {}, ""No blindfolded" leaves out 3x3, 4x4 and 5x5 Blindfolded and Multi-Blind (Kinch then averages 13 events). The Events tab is the standard single and average rankings for each event, deep lists for the world, continents and countries. Rankings are built nightly from the WCA results export. Sum of Ranks and Kinch lists show the top 1,000 for the world and continents and the top 500 for countries; Lookup works for everyone, and you can compare two people or save a shareable image there."),
     el("button", { class: "btn", onclick: () => go("#sum") }, "Back")));
 }
 
 function route() {
   const h = location.hash.replace(/^#/, "");
   if (!META) return;
+  if (h.startsWith("compare")) { const q = h.split("/"); return renderCompare((q[1] || "").toUpperCase(), (q[2] || "").toUpperCase() || null); }
+  if (h === "events") return renderEvents();
   if (h.startsWith("lookup")) return renderLookup((h.split("/")[1] || "").toUpperCase() || null);
   if (h === "kinch") return renderBoard("k");
   if (h === "about") return renderAbout();
