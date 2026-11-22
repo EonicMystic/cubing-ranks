@@ -36,6 +36,7 @@ HAS_AVG = [e != '333mbf' for e in EV]
 BLIND = {EIDX['333bf'], EIDX['444bf'], EIDX['555bf']}
 MBF = EIDX['333mbf']
 SCOPE_LIMIT = {'w': 1000, 'c': 1000, 'n': 500}
+EV_LIMIT = {'w': 5000, 'c': 5000, 'n': 2500}
 
 
 def rows(name):
@@ -97,6 +98,18 @@ print('people with a ranked result:', NP)
 
 # ---------- ranks inside world / continent / country ----------
 SH = 1 << 20
+def b36(n):
+    d = '0123456789abcdefghijklmnopqrstuvwxyz'
+    if n == 0: return '0'
+    o = ''
+    while n: n, m = divmod(n, 36); o = d[m] + o
+    return o
+
+
+
+evdir = os.path.join(out_dir, 'ev')
+shutil.rmtree(evdir, ignore_errors=True)
+os.makedirs(evdir)
 rankp = [[[None] * NE for _ in range(NP)] for _ in range(2)]    # packed (world, continent, country) rank per person/event
 rec = {'w': [[0, 0] for _ in range(NE)], 'c': [[[0, 0] for _ in range(NE)] for _ in conts], 'n': [[[0, 0] for _ in range(NE)] for _ in countries]}
 cnt = {'w': [[0, 0] for _ in range(NE)], 'c': [[[0, 0] for _ in range(NE)] for _ in conts], 'n': [[[0, 0] for _ in range(NE)] for _ in countries]}
@@ -110,6 +123,8 @@ def tie(st, v):
     return st[2]
 
 
+GRID = [1, 2, 3, 5, 7, 10, 15, 20, 30, 50, 70, 100, 150, 200, 300, 500, 700, 1000, 1500, 2000, 3000, 5000, 7000, 10000, 15000, 20000, 30000, 50000, 70000, 100000, 150000, 200000]
+grid = [[[] for _ in range(NE)] for _ in range(2)]
 for k in (0, 1):
     for e in range(NE):
         items = sorted((v, PI[pid]) for pid, v in pr[k][e].items() if pid in PI)
@@ -119,14 +134,24 @@ for k in (0, 1):
         cs = [[0, None, 0] for _ in conts]
         ns = [[0, None, 0] for _ in countries]
         rec['w'][e][k] = items[0][0]
+        grid[k][e] = [items[g - 1][0] for g in GRID if g <= len(items)]
         cnt['w'][e][k] = len(items)
+        evrows = {}
         for v, i in items:
             c, n = p_cont[i], p_country[i]
+            for key, lim in ((('w', 0), EV_LIMIT['w']), (('c', c), EV_LIMIT['c']), (('n', n), EV_LIMIT['n'])):
+                lst = evrows.setdefault(key, [])
+                if len(lst) < lim:
+                    lst.append(people[i] + '|' + pname.get(people[i], people[i]).replace('|', '/').replace('\t', ' ') + '|' + b36(n) + '|' + b36(v))
             rankp[k][i][e] = (tie(ws, v) << 40) | (tie(cs[c], v) << 20) | tie(ns[n], v)
             if not rec['c'][c][e][k]: rec['c'][c][e][k] = v
             if not rec['n'][n][e][k]: rec['n'][n][e][k] = v
         for c in range(len(conts)): cnt['c'][c][e][k] = cs[c][0]
         for n in range(len(countries)): cnt['n'][n][e][k] = ns[n][0]
+        for (kind, ix), lst in evrows.items():
+            fn = f'{e}_{k}_w.txt' if kind == 'w' else f'{e}_{k}_{kind}{ix}.txt'
+            with open(os.path.join(evdir, fn), 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lst))
 
 MASK = SH - 1
 
@@ -136,24 +161,33 @@ def unpack(x):
 
 
 # ---------- Sum of ranks: three scopes (world, continent, country) x three types (single, average, combined) ----------
-sums = [[[0] * NP for _ in range(3)] for _ in range(3)]          # [type S,A,C][scope W,C,N][person]
-for i in range(NP):
-    c, n = p_cont[i], p_country[i]
-    for k in (0, 1):
-        rk = rankp[k][i]
-        sw = sc = sn = 0
-        for e in range(NE):
-            if k == 1 and not HAS_AVG[e]:
-                continue
-            x = rk[e]
-            if x is None:
-                sw += cnt['w'][e][k] + 1; sc += cnt['c'][c][e][k] + 1; sn += cnt['n'][n][e][k] + 1
-            else:
-                a, b, d = unpack(x)
-                sw += a; sc += b; sn += d
-        sums[k][0][i] = sw; sums[k][1][i] = sc; sums[k][2][i] = sn
-    for s in range(3):
-        sums[2][s][i] = sums[0][s][i] + sums[1][s][i]
+EXCL = BLIND | {MBF}
+
+
+def make_sums(skip):
+    out = [[[0] * NP for _ in range(3)] for _ in range(3)]          # [type S,A,C][scope W,C,N][person]
+    for i in range(NP):
+        c, n = p_cont[i], p_country[i]
+        for k in (0, 1):
+            rk = rankp[k][i]
+            sw = sc = sn = 0
+            for e in range(NE):
+                if e in skip or (k == 1 and not HAS_AVG[e]):
+                    continue
+                x = rk[e]
+                if x is None:
+                    sw += cnt['w'][e][k] + 1; sc += cnt['c'][c][e][k] + 1; sn += cnt['n'][n][e][k] + 1
+                else:
+                    a, b, d = unpack(x)
+                    sw += a; sc += b; sn += d
+            out[k][0][i] = sw; out[k][1][i] = sc; out[k][2][i] = sn
+        for s_ in range(3):
+            out[2][s_][i] = out[0][s_][i] + out[1][s_][i]
+    return out
+
+
+sums = make_sums(set())
+sums2 = make_sums(EXCL)
 
 
 # ---------- Kinch ranks ----------
@@ -173,20 +207,28 @@ def kscore(e, ps, pa, rs, ra):
 
 
 kin = [[0.0] * NP for _ in range(3)]
+kin2 = [[0.0] * NP for _ in range(3)]
 for i, pid in enumerate(people):
     c, n = p_cont[i], p_country[i]
     tw = tc = tn = 0.0
+    xw = xc = xn = 0.0
     for e in range(NE):
         ps, pa = pr[0][e].get(pid, 0), pr[1][e].get(pid, 0)
         if not ps and not pa:
             continue
-        tw += kscore(e, ps, pa, rec['w'][e][0], rec['w'][e][1])
-        tc += kscore(e, ps, pa, rec['c'][c][e][0], rec['c'][c][e][1])
-        tn += kscore(e, ps, pa, rec['n'][n][e][0], rec['n'][n][e][1])
+        a1 = kscore(e, ps, pa, rec['w'][e][0], rec['w'][e][1])
+        a2 = kscore(e, ps, pa, rec['c'][c][e][0], rec['c'][c][e][1])
+        a3 = kscore(e, ps, pa, rec['n'][n][e][0], rec['n'][n][e][1])
+        tw += a1; tc += a2; tn += a3
+        if e not in EXCL:
+            xw += a1; xc += a2; xn += a3
     kin[0][i] = round(tw / NE, 2); kin[1][i] = round(tc / NE, 2); kin[2][i] = round(tn / NE, 2)
+    NX = NE - len(EXCL)
+    kin2[0][i] = round(xw / NX, 2); kin2[1][i] = round(xc / NX, 2); kin2[2][i] = round(xn / NX, 2)
 
 # ---------- rank everyone on every metric inside each scope, and collect leaderboards ----------
-METRICS = [('k', kin, True), ('S', sums[0], False), ('A', sums[1], False), ('C', sums[2], False)]
+METRICS = [('k', kin, True), ('S', sums[0], False), ('A', sums[1], False), ('C', sums[2], False),
+           ('k2', kin2, True), ('S2', sums2[0], False), ('A2', sums2[1], False), ('C2', sums2[2], False)]
 pos = {}                                  # (metric, scope index, person) -> rank, kept as arrays
 prank = {m: [[0] * NP for _ in range(3)] for m, _, _ in METRICS}
 lb = {}                                   # scope key -> metric -> rows
@@ -227,7 +269,7 @@ meta = {
     'updated': stamp, 'people': NP,
     'events': EV, 'names': [n for _, n in EVENTS], 'avg': HAS_AVG,
     'conts': conts, 'countries': [[c, cont_idx_of_country[i]] for i, c in enumerate(countries)],
-    'rec': rec,
+    'rec': rec, 'grid': grid, 'cntw': cnt['w'], 'grid_at': GRID, 'excl': sorted(EXCL),
     'pop': {'w': NP, 'c': [POPC.get(i, 0) for i in range(len(conts))], 'n': [POPN.get(i, 0) for i in range(len(countries))]},
     'files': {'w': 'world.json', 'c': {str(i): f'c{i}.json' for i in range(len(conts)) if ('c', i) in files},
               'n': {str(i): f'n{i}.json' for i in range(len(countries)) if ('n', i) in files}},
@@ -237,14 +279,6 @@ with open(os.path.join(out_dir, 'meta.json'), 'w', encoding='utf-8') as f:
 
 
 # ---------- per-person shards and the search index ----------
-def b36(n):
-    d = '0123456789abcdefghijklmnopqrstuvwxyz'
-    if n == 0: return '0'
-    o = ''
-    while n: n, m = divmod(n, 36); o = d[m] + o
-    return o
-
-
 def shard_of(w):
     h = 0
     for ch in w:
@@ -267,7 +301,9 @@ os.makedirs(pdir)
 shards, buckets = defaultdict(list), defaultdict(list)
 for i, pid in enumerate(people):
     head = ([int(round(kin[s][i] * 100)) for s in range(3)] + [prank['k'][s][i] for s in range(3)]
-            + [sums[t][s][i] for t in range(3) for s in range(3)] + [prank[m][s][i] for m in 'SAC' for s in range(3)])
+            + [sums[t][s][i] for t in range(3) for s in range(3)] + [prank[m][s][i] for m in 'SAC' for s in range(3)]
+            + [int(round(kin2[s][i] * 100)) for s in range(3)] + [prank['k2'][s][i] for s in range(3)]
+            + [sums2[t][s][i] for t in range(3) for s in range(3)] + [prank[m][s][i] for m in ('S2', 'A2', 'C2') for s in range(3)])
     evs = []
     for e in range(NE):
         f = [str(e)]
