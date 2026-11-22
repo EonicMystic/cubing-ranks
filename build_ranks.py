@@ -9,7 +9,8 @@ Writes into <output_dir>:
   p/<n>.txt            per-person data, 256 small shards
   p/s_<key>.txt        name search buckets
 """
-import json, math, os, re, shutil, sys, tempfile, unicodedata, zipfile
+import gzip, json, math, os, re, shutil, struct, sys, tempfile, unicodedata, zipfile
+from array import array
 from collections import defaultdict
 
 src, out_dir = sys.argv[1], sys.argv[2]
@@ -108,6 +109,9 @@ def b36(n):
 
 
 evdir = os.path.join(out_dir, 'ev')
+cxdir = os.path.join(out_dir, 'cx')
+shutil.rmtree(cxdir, ignore_errors=True)
+os.makedirs(cxdir)
 shutil.rmtree(evdir, ignore_errors=True)
 os.makedirs(evdir)
 rankp = [[[None] * NE for _ in range(NP)] for _ in range(2)]    # packed (world, continent, country) rank per person/event
@@ -137,6 +141,12 @@ for k in (0, 1):
         grid[k][e] = [items[g - 1][0] for g in GRID if g <= len(items)]
         cnt['w'][e][k] = len(items)
         evrows = {}
+        cx_ord = array('I', (i for _, i in items)); cx_val = array('I', (v for v, _ in items))
+        cx_d = array('I', [cx_val[0]] + [(cx_val[j] - cx_val[j - 1]) & 0xFFFFFFFF for j in range(1, len(cx_val))])
+        ob, db = cx_ord.tobytes(), cx_d.tobytes()
+        blob = struct.pack('<I', len(items)) + ob[0::4] + ob[1::4] + ob[2::4] + db[0::4] + db[1::4] + db[2::4] + db[3::4]
+        with gzip.GzipFile(os.path.join(cxdir, f'{e}_{k}.gz'), 'wb', compresslevel=9, mtime=0) as gz:
+            gz.write(blob)
         for v, i in items:
             c, n = p_cont[i], p_country[i]
             for key, lim in ((('w', 0), EV_LIMIT['w']), (('c', c), EV_LIMIT['c']), (('n', n), EV_LIMIT['n'])):
@@ -333,4 +343,6 @@ for k, lines in buckets.items():
     lines.sort(key=lambda x: x.split('\t')[1].lower())
     with open(os.path.join(pdir, f's_{k}.txt'), 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
+with gzip.GzipFile(os.path.join(cxdir, 'people.txt.gz'), 'wb', compresslevel=9, mtime=0) as gz:
+    gz.write('\n'.join(pid + '|' + pname.get(pid, pid).replace('|', '/').replace('\t', ' ') + '|' + b36(p_country[i]) for i, pid in enumerate(people)).encode('utf-8'))
 print('done:', NP, 'people;', len(files), 'leaderboards;', len(shards), 'shards;', len(buckets), 'search buckets; export', stamp)
