@@ -35,7 +35,7 @@ NE = len(EV)
 HAS_AVG = [e != '333mbf' for e in EV]
 BLIND = {EIDX['333bf'], EIDX['444bf'], EIDX['555bf']}
 MBF = EIDX['333mbf']
-SCOPE_LIMIT = {'w': 250, 'c': 250, 'n': 200}
+SCOPE_LIMIT = {'w': 1000, 'c': 1000, 'n': 500}
 
 
 def rows(name):
