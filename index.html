@@ -282,7 +282,10 @@ async function renderBoard(metric) {
   const cols = ["#", "Name", metric === "k" ? "Kinch" : "Sum"];
   t.append(el("thead", {}, el("tr", {}, cols.map((c, i) => el("th", i === 2 ? { class: "num" } : {}, c)))));
   const body = el("tbody");
-  lb.forEach((r, i) => {
+  let shown = 0;
+  const more = el("button", { class: "btn", style: "margin-top:10px", onclick: () => addRows() }, "Show more");
+  const addRows = () => { const end = Math.min(lb.length, shown + 100); drawRows(shown, end); shown = end; more.style.display = shown >= lb.length ? "none" : ""; };
+  const drawRows = (a, z) => lb.slice(a, z).forEach((r, j) => { const i = a + j;
     const tied = (lb[i - 1] && lb[i - 1][0] === r[0]) || (lb[i + 1] && lb[i + 1][0] === r[0]);
     const rk = (tied ? "T-" : "") + r[0];
     const tr = el("tr", { class: "go" + (me === r[1] ? " me" : ""), onclick: () => go("#lookup/" + r[1]) },
@@ -293,8 +296,10 @@ async function renderBoard(metric) {
   });
   t.append(body);
   box.replaceWith(t);
+  addRows();
+  card.append(more);
   const lim = lb.length;
-  card.append(el("p", { class: "note" }, "Showing the top " + lim + " for " + scopeName() + ". " +
+  card.append(el("p", { class: "note" }, "Top " + lim + " for " + scopeName() + ". " +
     (metric === "k" ? "Kinch score is the average of your per-event scores (record ÷ your PR, 17 events, missing events score 0)."
       : "Lower is better. Events you haven't done count as one rank past the last ranked person.") +
     " Tap anyone to open their profile."));
@@ -401,7 +406,7 @@ function renderAbout() {
     el("p", {}, el("b", {}, "Sum of Ranks. "), "Add up your rank in every event. Single uses your best single in all 17 events, Average uses your best average in the 16 events that have one, and Combined adds both. If you haven't done an event, you're given one rank past the last ranked person in that event, so skipping an event never helps. Lower is better. Ties share the best rank."),
     el("p", {}, el("b", {}, "Kinch Ranks. "), "For each event, your score is the record ÷ your personal best × 100 (so the record holder scores 100). Your Kinch score is the average of all 17 events, with 0 for events you haven't done. Events use averages, except the blindfolded events (best of single or average ratio), Fewest Moves (average), and Multi-Blind (points and time). Higher is better."),
     el("p", {}, el("b", {}, "Continent and country. "), "The same math applies inside each region: the record is the best in that region, and ranks are among people from that region."),
-    el("p", {}, "Rankings are built nightly from the WCA results export. Leaderboards list the top 250 for the world and continents and the top 200 for countries; Lookup works for everyone."),
+    el("p", {}, "Rankings are built nightly from the WCA results export. Leaderboards list the top 1,000 for the world and continents and the top 500 for countries; Lookup works for everyone."),
     el("button", { class: "btn", onclick: () => go("#sum") }, "Back")));
 }
 
