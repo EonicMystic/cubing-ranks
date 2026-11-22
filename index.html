@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cubing Ranks</title>
+<meta name="description" content="Sum of Ranks and Kinch Ranks for every WCA competitor, by world, continent and country. Updated daily.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cubing Ranks">
+<meta property="og:description" content="Sum of Ranks and Kinch Ranks for every WCA competitor, by world, continent and country. Look up your own profile.">
+<meta property="og:image" content="https://eonicmystic.github.io/cubing-ranks/ranks-preview.png">
+<meta property="og:url" content="https://eonicmystic.github.io/cubing-ranks/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://eonicmystic.github.io/cubing-ranks/ranks-preview.png">
+<style>
+  :root {
+    --bg: #f5f7fa; --card: #ffffff; --text: #12161c; --muted: #5b6573; --line: #e2e6ec;
+    --accent: #1f6feb; --accent-soft: #e4eeff; --good: #1a7f37; --gold: #b8860b; --shadow: 0 1px 2px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b0f14; --card: #131921; --text: #e8ecf1; --muted: #98a3b1; --line: #242d38;
+      --accent: #58a6ff; --accent-soft: #14283f; --good: #56d364; --gold: #e3b341; --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b0f14; --card: #131921; --text: #e8ecf1; --muted: #98a3b1; --line: #242d38;
+    --accent: #58a6ff; --accent-soft: #14283f; --good: #56d364; --gold: #e3b341; --shadow: none;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.35rem; margin: 4px 0 2px; }
+  .sub { color: var(--muted); font-size: .88rem; margin: 0 0 12px; }
+  .tabs { display: flex; gap: 6px; background: var(--card); border: 1px solid var(--line); padding: 4px; border-radius: 12px; margin-bottom: 12px; }
+  .tabs button { flex: 1; border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 600; padding: 9px 4px; border-radius: 9px; cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: #fff; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); margin-bottom: 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { border: 0; background: var(--bg); color: var(--text); font: inherit; font-size: .9rem; padding: 7px 12px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  select, input[type=search] { font: inherit; font-size: .95rem; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; max-width: 100%; }
+  input[type=search] { width: 100%; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); font-size: .93rem; }
+  th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.me td { background: var(--accent-soft); }
+  tr.go { cursor: pointer; }
+  tr.go:hover td { background: var(--accent-soft); }
+  .rk { color: var(--muted); font-variant-numeric: tabular-nums; width: 3.2em; }
+  .rk.top { color: var(--gold); font-weight: 700; }
+  .flag { color: var(--muted); font-size: .8rem; }
+  .note { color: var(--muted); font-size: .82rem; margin: 8px 0 0; }
+  .hit { display: flex; justify-content: space-between; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; margin-top: 6px; cursor: pointer; background: var(--bg); }
+  .hit:hover { border-color: var(--accent); }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  @media (min-width: 640px) { .grid { grid-template-columns: 1fr 1fr; } }
+  .big { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .scope { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); gap: 8px; }
+  .scope:last-child { border-bottom: 0; }
+  .scope b { font-variant-numeric: tabular-nums; }
+  .pill { background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 2px 9px; font-size: .8rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ev { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .ev:last-child { border-bottom: 0; }
+  .ev h4 { margin: 0 0 4px; font-size: .98rem; display: flex; justify-content: space-between; gap: 8px; }
+  .ev .ln { display: flex; justify-content: space-between; gap: 8px; font-size: .88rem; color: var(--muted); padding: 1px 0; }
+  .ev .ln span:last-child { color: var(--text); font-variant-numeric: tabular-nums; text-align: right; }
+  .btn { border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: .88rem; padding: 6px 12px; border-radius: 10px; cursor: pointer; }
+  .loading { color: var(--muted); padding: 14px 0; }
+  .err { color: #c0392b; }
+  footer { color: var(--muted); font-size: .8rem; text-align: center; margin: 18px 0 8px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cubing Ranks</h1>
+  <p class="sub" id="stamp">Loading…</p>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="sum">Sum of Ranks</button>
+    <button role="tab" data-tab="kinch">Kinch Ranks</button>
+    <button role="tab" data-tab="lookup">Lookup</button>
+  </div>
+  <div id="view"></div>
+  <footer>Built from the public WCA results export. Not affiliated with the WCA. <a href="#about" id="aboutLink">How it works</a></footer>
+</main>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) {
+    if (k === "class") e.className = attrs[k];
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]);
+    else e.setAttribute(k, attrs[k]);
+  }
+  for (const c of kids.flat()) if (c != null) e.append(c);
+  return e;
+}
+function store(k, v) { try { if (v === undefined) return localStorage.getItem("cr_" + k); localStorage.setItem("cr_" + k, v); } catch (e) { return null; } }
+const b36 = t => t ? parseInt(t, 36) : 0;
+const fold = t => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const bucketOf = tok => { const k = tok.slice(0, 3); return /^[a-z0-9]{2,3}$/.test(k) ? k : "_" + (tok.codePointAt(0) % 64); };
+function shardOf(w) { let h = 0; for (let k = 0; k < w.length; k++) h = (h * 31 + w.charCodeAt(k)) % 1000003; return h % 256; }
+async function getRetry(url, json) {
+  let last;
+  for (let i = 0; i < 3; i++) {
+    try { const r = await fetch(url); if (r.ok) return json ? r.json() : r.text(); last = new Error(url + " " + r.status); }
+    catch (e) { last = e; }
+    await new Promise(r => setTimeout(r, 400 * (i + 1)));
+  }
+  throw last;
+}
+
+let META = null;
+const lbCache = new Map(), shardCache = new Map(), bucketCache = new Map(), personCache = new Map();
+let profile = null;
+try { profile = JSON.parse(store("profile") || "null"); } catch (e) { profile = null; }
+if (profile && !profile.id) profile = null;
+
+const ST = {
+  tab: "sum", kind: store("kind") || "C", scope: store("scope") || "w", cont: +store("cont") || 0, country: store("country"),
+};
+const SCOPES = [["w", "World"], ["c", "Continent"], ["n", "Country"]];
+
+/* ---------- formatting ---------- */
+function fmtTime(cs) {
+  if (!cs) return "—";
+  const t = cs / 100;
+  if (t >= 60) { const m = Math.floor(t / 60), s = (t - m * 60).toFixed(2).padStart(5, "0"); return m >= 60 ? Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0") + ":" + s : m + ":" + s; }
+  return t.toFixed(2);
+}
+function fmtVal(ev, isAvg, v) {
+  if (!v) return "—";
+  const id = META.events[ev];
+  if (id === "333fm") return isAvg ? (v / 100).toFixed(2) : String(v);
+  if (id === "333mbf") {
+    const dd = Math.floor(v / 1e7), t = Math.floor(v / 100) % 100000, miss = v % 100;
+    const pts = 99 - dd, solved = pts + miss;
+    const m = Math.floor(t / 60), s = String(t % 60).padStart(2, "0");
+    return solved + "/" + (solved + miss) + " " + m + ":" + s;
+  }
+  return fmtTime(v);
+}
+const n0 = x => Number(x).toLocaleString("en-US");
+const fmtK = v => (v / 100).toFixed(2);
+const nth = n => "#" + n0(n);
+
+/* ---------- data ---------- */
+async function loadMeta() {
+  META = await getRetry("meta.json", true);
+  const d = META.updated || "";
+  $("#stamp").textContent = n0(META.people) + " competitors · data from the WCA export of " + d.replace(" UTC", "") + " UTC · updates daily";
+  if (ST.country == null || !META.countries[ST.country]) {
+    const us = META.countries.findIndex(c => c[0] === "USA" || c[0] === "United States");
+    ST.country = us >= 0 ? us : 0;
+  } else ST.country = +ST.country;
+}
+async function loadLB(scope, idx) {
+  const f = scope === "w" ? META.files.w : META.files[scope][idx];
+  if (!lbCache.has(f)) lbCache.set(f, getRetry("lb/" + f, true));
+  return lbCache.get(f);
+}
+async function loadShard(id) {
+  const n = shardOf(id);
+  if (!shardCache.has(n)) shardCache.set(n, getRetry("p/" + n + ".txt").then(t => t.split("\n")));
+  return shardCache.get(n);
+}
+async function loadPerson(id) {
+  if (personCache.has(id)) return personCache.get(id);
+  const lines = await loadShard(id);
+  for (const ln of lines) {
+    if (!ln.startsWith(id + "|")) continue;
+    const p = ln.split("|");
+    const h = p[3].split(",").map(b36);
+    const evs = {};
+    (p[4] || "").split(";").filter(Boolean).forEach(s => {
+      const f = s.split(",");
+      evs[+f[0]] = { s: [b36(f[1]), b36(f[2]), b36(f[3]), b36(f[4])], a: [b36(f[5]), b36(f[6]), b36(f[7]), b36(f[8])] };
+    });
+    const out = {
+      id, name: p[1], country: b36(p[2]), evs,
+      kin: [h[0], h[1], h[2]], kinRank: [h[3], h[4], h[5]],
+      sum: { S: [h[6], h[7], h[8]], A: [h[9], h[10], h[11]], C: [h[12], h[13], h[14]] },
+      sumRank: { S: [h[15], h[16], h[17]], A: [h[18], h[19], h[20]], C: [h[21], h[22], h[23]] },
+    };
+    out.cont = META.countries[out.country][1];
+    personCache.set(id, out);
+    return out;
+  }
+  return null;
+}
+async function searchPeople(q) {
+  const raw = q.trim();
+  if (/^\d{4}[a-z]{4}\d{2}$/i.test(raw)) {
+    const p = await loadPerson(raw.toUpperCase());
+    return p ? [{ id: p.id, name: p.name, country: META.countries[p.country][0] }] : [];
+  }
+  const toks = fold(raw).split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2);
+  if (!toks.length) return null;
+  const long = toks.reduce((a, b) => b.length > a.length ? b : a), key = bucketOf(long);
+  let rows = bucketCache.get(key);
+  if (!rows) {
+    const r = await fetch("p/s_" + key + ".txt");
+    rows = r.ok ? (await r.text()).split("\n").filter(Boolean).map(l => { const [id, name, country] = l.split("\t"); return { id, name, country }; }) : [];
+    bucketCache.set(key, rows);
+  }
+  const hit = [];
+  for (const r of rows) {
+    if (r.f === undefined) r.f = fold(r.name);
+    if (toks.every(t => r.f.includes(t))) hit.push(r);
+    if (hit.length >= 60) break;
+  }
+  hit.sort((a, b) => (b.f.startsWith(toks[0]) ? 1 : 0) - (a.f.startsWith(toks[0]) ? 1 : 0));
+  return hit.slice(0, 8);
+}
+
+/* ---------- Kinch per event (same rules as the build) ---------- */
+const BLIND = ["333bf", "444bf", "555bf"];
+function eff(v) { const dd = Math.floor(v / 1e7), t = Math.floor(v / 100) % 100000; return (99 - dd) + (3600 - Math.min(t, 3600)) / 3600; }
+function recFor(si, p) {
+  if (si === 0) return META.rec.w;
+  return si === 1 ? META.rec.c[p.cont] : META.rec.n[p.country];
+}
+function kscore(ev, e, si, p) {
+  const id = META.events[ev], R = recFor(si, p)[ev], ps = e.s[3], pa = e.a[3];
+  if (id === "333mbf") return ps && R[0] ? 100 * eff(ps) / eff(R[0]) : 0;
+  if (BLIND.includes(id)) { const a = pa && R[1] ? R[1] / pa : 0, s = ps && R[0] ? R[0] / ps : 0; return 100 * Math.max(a, s); }
+  return pa && R[1] ? 100 * R[1] / pa : 0;
+}
+
+/* ---------- views ---------- */
+const view = $("#view");
+function setTab(t) {
+  ST.tab = t;
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t ? "true" : "false"));
+}
+function go(h) { if (location.hash === h) route(); else location.hash = h; }
+
+function scopeControls(rerender) {
+  const seg = el("div", { class: "seg" }, SCOPES.map(([k, label]) =>
+    el("button", { "aria-pressed": ST.scope === k ? "true" : "false", onclick: () => { ST.scope = k; store("scope", k); rerender(); } }, label)));
+  const row = el("div", { class: "row" }, seg);
+  if (ST.scope === "c") {
+    const s = el("select", { onchange: e => { ST.cont = +e.target.value; store("cont", ST.cont); rerender(); } },
+      META.conts.map((n, i) => el("option", { value: i }, n)));
+    s.value = ST.cont; row.append(s);
+  } else if (ST.scope === "n") {
+    const order = META.countries.map((c, i) => [c[0], i]).sort((a, b) => a[0].localeCompare(b[0]));
+    const s = el("select", { onchange: e => { ST.country = +e.target.value; store("country", ST.country); rerender(); } },
+      order.map(([n, i]) => el("option", { value: i }, n)));
+    s.value = ST.country; row.append(s);
+  }
+  return row;
+}
+const scopeIdx = () => ST.scope === "w" ? 0 : ST.scope === "c" ? ST.cont : ST.country;
+const scopeName = () => ST.scope === "w" ? "World" : ST.scope === "c" ? META.conts[ST.cont] : META.countries[ST.country][0];
+
+async function renderBoard(metric) {
+  setTab(metric === "k" ? "kinch" : "sum");
+  view.replaceChildren();
+  const card = el("div", { class: "card" });
+  const box = el("div", { class: "loading" }, "Loading…");
+  const draw = () => renderBoard(metric);
+  const head = [];
+  if (metric !== "k") {
+    head.push(el("div", { class: "row" }, el("div", { class: "seg" }, [["S", "Single"], ["A", "Average"], ["C", "Combined"]].map(([k, l]) =>
+      el("button", { "aria-pressed": ST.kind === k ? "true" : "false", onclick: () => { ST.kind = k; store("kind", k); draw(); } }, l)))));
+  }
+  head.push(scopeControls(draw));
+  card.append(...head, box);
+  view.append(card);
+  const key = metric === "k" ? "k" : ST.kind;
+  let lb;
+  try { lb = (await loadLB(ST.scope, scopeIdx()))[key]; } catch (e) { box.className = "err"; box.textContent = "Couldn't load this list. Try again in a moment."; return; }
+  if (!lb || !lb.length) { box.textContent = "No ranked competitors here yet."; return; }
+  const me = profile && profile.id;
+  const t = el("table");
+  const cols = ["#", "Name", metric === "k" ? "Kinch" : "Sum"];
+  t.append(el("thead", {}, el("tr", {}, cols.map((c, i) => el("th", i === 2 ? { class: "num" } : {}, c)))));
+  const body = el("tbody");
+  lb.forEach((r, i) => {
+    const tied = (lb[i - 1] && lb[i - 1][0] === r[0]) || (lb[i + 1] && lb[i + 1][0] === r[0]);
+    const rk = (tied ? "T-" : "") + r[0];
+    const tr = el("tr", { class: "go" + (me === r[1] ? " me" : ""), onclick: () => go("#lookup/" + r[1]) },
+      el("td", { class: "rk" + (r[0] <= 3 ? " top" : "") }, rk),
+      el("td", {}, r[2], " ", el("span", { class: "flag" }, ST.scope === "n" ? "" : META.countries[r[4]][0])),
+      el("td", { class: "num" }, metric === "k" ? r[3].toFixed(2) : n0(r[3])));
+    body.append(tr);
+  });
+  t.append(body);
+  box.replaceWith(t);
+  const lim = lb.length;
+  card.append(el("p", { class: "note" }, "Showing the top " + lim + " for " + scopeName() + ". " +
+    (metric === "k" ? "Kinch score is the average of your per-event scores (record ÷ your PR, 17 events, missing events score 0)."
+      : "Lower is better. Events you haven't done count as one rank past the last ranked person.") +
+    " Tap anyone to open their profile."));
+  if (me) {
+    const p = await loadPerson(me).catch(() => null);
+    if (p) {
+      const s = ST.scope === "w" ? 0 : ST.scope === "c" ? 1 : 2;
+      const inScope = s === 0 || (s === 1 ? p.cont === ST.cont : p.country === ST.country);
+      if (inScope && !lb.some(r => r[1] === me)) {
+        const rk = metric === "k" ? p.kinRank[s] : p.sumRank[key][s];
+        card.append(el("p", { class: "note" }, "You (" + p.name + ") are " + nth(rk) + " here."));
+      }
+    }
+  }
+}
+
+function summaryCard(p) {
+  const labels = [["World", 0], ["Continent · " + META.conts[p.cont], 1], ["Country · " + META.countries[p.country][0], 2]];
+  const pop = [META.pop.w, META.pop.c[p.cont], META.pop.n[p.country]];
+  const block = (title, valFn, rankFn, big) => el("div", { class: "card" },
+    el("div", { class: "row", style: "justify-content:space-between;margin-bottom:4px" }, el("b", {}, title)),
+    labels.map(([l, s]) => el("div", { class: "scope" }, el("span", {}, l),
+      el("span", {}, el("b", {}, valFn(s)), " ", el("span", { class: "pill" }, nth(rankFn(s)) + " of " + n0(pop[s]))))));
+  return el("div", { class: "grid" },
+    block("Kinch Ranks", s => fmtK(p.kin[s]), s => p.kinRank[s]),
+    block("Sum of Ranks · Combined", s => n0(p.sum.C[s]), s => p.sumRank.C[s]),
+    block("Sum of Ranks · Single", s => n0(p.sum.S[s]), s => p.sumRank.S[s]),
+    block("Sum of Ranks · Average", s => n0(p.sum.A[s]), s => p.sumRank.A[s]));
+}
+
+function eventsCard(p, si) {
+  const card = el("div", { class: "card" });
+  const seg = el("div", { class: "seg" }, SCOPES.map(([k, l], i) =>
+    el("button", { "aria-pressed": si === i ? "true" : "false", onclick: () => { store("lscope", i); renderLookupBody(p, i); } }, l)));
+  card.append(el("div", { class: "row", style: "justify-content:space-between" }, el("b", {}, "Events"), seg));
+  META.events.forEach((id, ev) => {
+    const e = p.evs[ev];
+    const ks = e ? kscore(ev, e, si, p) : 0;
+    const rk = (r) => r[si] ? nth(r[si]) : "—";
+    const node = el("div", { class: "ev" },
+      el("h4", {}, el("span", {}, META.names[ev]), el("span", { class: "pill" }, "Kinch " + ks.toFixed(2))));
+    if (!e) node.append(el("div", { class: "ln" }, el("span", {}, "No result"), el("span", {}, "counts as last + 1")));
+    else {
+      node.append(el("div", { class: "ln" }, el("span", {}, "Single " + fmtVal(ev, false, e.s[3])), el("span", {}, e.s[3] ? rk(e.s) : "no rank")));
+      if (META.avg[ev]) node.append(el("div", { class: "ln" }, el("span", {}, "Average " + fmtVal(ev, true, e.a[3])), el("span", {}, e.a[3] ? rk(e.a) : "no rank")));
+    }
+    card.append(node);
+  });
+  card.append(el("p", { class: "note" }, "Ranks shown are for the scope you picked above. Missing results count as one rank past the last ranked person in that scope."));
+  return card;
+}
+let lookupHost = null;
+function renderLookupBody(p, si) {
+  const keep = lookupHost.querySelector(".events-host");
+  keep.replaceChildren(eventsCard(p, si));
+}
+async function showPerson(id) {
+  const host = $("#person");
+  host.replaceChildren(el("div", { class: "loading" }, "Loading…"));
+  let p;
+  try { p = await loadPerson(id); } catch (e) { host.replaceChildren(el("div", { class: "err" }, "Couldn't load that profile.")); return; }
+  if (!p) { host.replaceChildren(el("div", { class: "err" }, "No ranked results found for " + id + ".")); return; }
+  const isMe = profile && profile.id === id;
+  const top = el("div", { class: "card" },
+    el("div", { class: "big" }, p.name),
+    el("div", { class: "flag" }, id + " · " + META.countries[p.country][0] + " · " + META.conts[p.cont]),
+    el("div", { class: "row", style: "margin-top:10px;margin-bottom:0" },
+      el("button", { class: "btn", onclick: () => { profile = { id, name: p.name }; store("profile", JSON.stringify(profile)); showPerson(id); } }, isMe ? "✓ This is me" : "This is me"),
+      el("a", { class: "btn", href: "https://www.worldcubeassociation.org/persons/" + id, target: "_blank", rel: "noopener", style: "text-decoration:none" }, "WCA profile")));
+  const si = +store("lscope") || 0;
+  host.replaceChildren(top, summaryCard(p), el("div", { class: "events-host" }, eventsCard(p, si)));
+  lookupHost = host;
+}
+function renderLookup(id) {
+  setTab("lookup");
+  view.replaceChildren();
+  const input = el("input", { type: "search", placeholder: "Search by name or WCA ID", autocomplete: "off", enterkeyhint: "search" });
+  const results = el("div");
+  const card = el("div", { class: "card" }, input, results);
+  const person = el("div", { id: "person" });
+  view.append(card, person);
+  let timer = 0, seq = 0;
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const q = input.value, my = ++seq;
+      if (q.trim().length < 2) { results.replaceChildren(); return; }
+      let hits = null;
+      try { hits = await searchPeople(q); } catch (e) { hits = []; }
+      if (my !== seq) return;
+      if (hits === null) { results.replaceChildren(); return; }
+      results.replaceChildren(...(hits.length ? hits.map(h => el("div", { class: "hit", onclick: () => go("#lookup/" + h.id) },
+        el("span", {}, h.name), el("span", { class: "flag" }, h.id + " · " + h.country))) : [el("p", { class: "note" }, "No one found. Try a different spelling or a WCA ID.")]));
+    }, 180);
+  });
+  const target = id || (profile && profile.id);
+  if (target) { if (!id) history.replaceState(null, "", "#lookup/" + target); showPerson(target); }
+  else person.append(el("p", { class: "note" }, "Search for yourself to see your Kinch score and Sum of Ranks in your country, continent and the world, plus a rank for every event."));
+}
+function renderAbout() {
+  setTab("");
+  view.replaceChildren(el("div", { class: "card" },
+    el("h3", { style: "margin-top:0" }, "How it works"),
+    el("p", {}, el("b", {}, "Sum of Ranks. "), "Add up your rank in every event. Single uses your best single in all 17 events, Average uses your best average in the 16 events that have one, and Combined adds both. If you haven't done an event, you're given one rank past the last ranked person in that event, so skipping an event never helps. Lower is better. Ties share the best rank."),
+    el("p", {}, el("b", {}, "Kinch Ranks. "), "For each event, your score is the record ÷ your personal best × 100 (so the record holder scores 100). Your Kinch score is the average of all 17 events, with 0 for events you haven't done. Events use averages, except the blindfolded events (best of single or average ratio), Fewest Moves (average), and Multi-Blind (points and time). Higher is better."),
+    el("p", {}, el("b", {}, "Continent and country. "), "The same math applies inside each region: the record is the best in that region, and ranks are among people from that region."),
+    el("p", {}, "Rankings are built nightly from the WCA results export. Leaderboards list the top 250 for the world and continents and the top 200 for countries; Lookup works for everyone."),
+    el("button", { class: "btn", onclick: () => go("#sum") }, "Back")));
+}
+
+function route() {
+  const h = location.hash.replace(/^#/, "");
+  if (!META) return;
+  if (h.startsWith("lookup")) return renderLookup((h.split("/")[1] || "").toUpperCase() || null);
+  if (h === "kinch") return renderBoard("k");
+  if (h === "about") return renderAbout();
+  return renderBoard("S");
+}
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => go("#" + b.dataset.tab)));
+window.addEventListener("hashchange", route);
+loadMeta().then(route).catch(() => { $("#stamp").textContent = "Couldn't load the data. Reload to try again."; });
+</script>
+</body>
+</html>
