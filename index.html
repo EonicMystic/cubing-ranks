@@ -129,8 +129,23 @@ try { profile = JSON.parse(store("profile") || "null"); } catch (e) { profile = 
 if (profile && !profile.id) profile = null;
 
 const ST = {
-  tab: "sum", nb: store("nb") === "1", imp: +store("imp") || 5, kind: store("kind") || "C", scope: store("scope") || "w", cont: +store("cont") || 0, country: store("country"),
+  tab: "sum", nb: store("nb") === "1", sel: null, imp: +store("imp") || 5, kind: store("kind") || "C", scope: store("scope") || "w", cont: +store("cont") || 0, country: store("country"),
 };
+const EV_SHORT = ["3x3", "2x2", "4x4", "5x5", "6x6", "7x7", "3BLD", "FMC", "OH", "Clock", "Mega", "Pyra", "Skewb", "SQ-1", "4BLD", "5BLD", "MBLD"];
+function initSel() {
+  const n = META.events.length;
+  let v = null; const t = store("sel");
+  if (t && t.length === n && /^[01]+$/.test(t)) v = [...t].map(c => c === "1");
+  ST.sel = v || (ST.nb ? META.events.map((_, i) => !META.excl.includes(i)) : new Array(n).fill(true));
+  syncNb();
+}
+function selMode() {
+  if (ST.sel.every(Boolean)) return "all";
+  if (ST.sel.every((x, i) => x === !META.excl.includes(i))) return "nb";
+  return "custom";
+}
+function syncNb() { ST.nb = selMode() === "nb"; store("nb", ST.nb ? "1" : "0"); store("sel", ST.sel.map(x => x ? "1" : "0").join("")); }
+function setSel(v) { ST.sel = v; syncNb(); }
 const vOf = p => ST.nb ? p.nb : p.all;
 const NEV = () => ST.nb ? META.events.length - META.excl.length : META.events.length;
 const isEx = ev => ST.nb && META.excl.includes(ev);
@@ -243,6 +258,126 @@ function kscore(ev, e, si, p) {
   return pa && R[1] ? 100 * R[1] / pa : 0;
 }
 
+
+/* ---------- custom event combinations ---------- */
+const PRESETS = [
+  ["All", i => true],
+  ["No blindfolded", i => !META.excl.includes(i)],
+  ["NxN cubes", i => ["333", "222", "444", "555", "666", "777"].includes(META.events[i])],
+  ["3x3 events", i => ["333", "333oh", "333bf", "333fm", "333mbf"].includes(META.events[i])],
+  ["Blindfolded", i => META.excl.includes(i)],
+];
+function eventPicker(rerender) {
+  const wrap = el("div", { class: "card", style: "margin-bottom:10px;padding:10px" });
+  const mode = selMode();
+  const head = el("div", { class: "row", style: "justify-content:space-between;margin-bottom:6px" },
+    el("b", {}, "Events " + "(" + ST.sel.filter(Boolean).length + " of " + ST.sel.length + ")"),
+    el("span", { class: "flag" }, mode === "custom" ? "Custom combination" : mode === "nb" ? "No blindfolded" : "All events"));
+  const chips = el("div", { class: "row", style: "gap:6px;margin-bottom:8px" }, EV_SHORT.map((l, i) =>
+    el("button", { class: "btn", "aria-pressed": ST.sel[i] ? "true" : "false", style: "padding:5px 10px", title: META.names[i],
+      onclick: () => { const v = ST.sel.slice(); v[i] = !v[i]; if (!v.some(Boolean)) return; setSel(v); rerender(); } }, l)));
+  const pre = el("div", { class: "row", style: "gap:6px;margin-bottom:0" }, PRESETS.map(([l, f]) =>
+    el("button", { class: "btn", style: "padding:4px 10px;font-size:.8rem", onclick: () => { setSel(META.events.map((_, i) => f(i))); rerender(); } }, l)));
+  wrap.append(head, chips, pre);
+  return wrap;
+}
+const CX = { people: null, ev: new Map() };
+async function gunzip(resp) {
+  const buf = new Uint8Array(await resp.arrayBuffer());
+  if (buf[0] === 0x1f && buf[1] === 0x8b) {
+    if (typeof DecompressionStream === "undefined") throw new Error("This browser can't open custom combinations. Try a newer browser.");
+    return new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+  }
+  return buf;
+}
+async function cxPeople() {
+  if (CX.people) return CX.people;
+  const r = await fetch("cx/people.txt.gz"); if (!r.ok) throw new Error("people");
+  const lines = new TextDecoder().decode(await gunzip(r)).split("\n");
+  const n = lines.length, pid = new Array(n), name = new Array(n), ctry = new Int32Array(n);
+  for (let i = 0; i < n; i++) { const f = lines[i].split("|"); pid[i] = f[0]; name[i] = f[1]; ctry[i] = parseInt(f[2], 36); }
+  const cont = new Int32Array(n); for (let i = 0; i < n; i++) cont[i] = META.countries[ctry[i]][1];
+  return CX.people = { n, pid, name, ctry, cont };
+}
+async function cxEvent(e, k) {
+  const key = e + "_" + k;
+  if (CX.ev.has(key)) return CX.ev.get(key);
+  const r = await fetch("cx/" + key + ".gz"); if (!r.ok) throw new Error("ev");
+  const b = await gunzip(r), n = new DataView(b.buffer, b.byteOffset).getUint32(0, true);
+  const ord = new Int32Array(n), val = new Uint32Array(n);
+  let o = 4;
+  const p0 = o, p1 = o + n, p2 = o + 2 * n, q0 = o + 3 * n, q1 = o + 4 * n, q2 = o + 5 * n, q3 = o + 6 * n;
+  let prev = 0;
+  for (let i = 0; i < n; i++) {
+    ord[i] = b[p0 + i] | (b[p1 + i] << 8) | (b[p2 + i] << 16);
+    prev = (prev + (b[q0 + i] | (b[q1 + i] << 8) | (b[q2 + i] << 16) | (b[q3 + i] << 24))) >>> 0;
+    val[i] = prev;
+  }
+  const d = { n, ord, val }; CX.ev.set(key, d); return d;
+}
+async function customBoard(metric, kind, si, idx, onProgress) {
+  const P = await cxPeople(), NP = P.n;
+  const sel = []; ST.sel.forEach((x, i) => { if (x) sel.push(i); });
+  const inS = new Uint8Array(NP);
+  let members = 0;
+  for (let i = 0; i < NP; i++) { const ok = si === 0 || (si === 1 ? P.cont[i] === idx : P.ctry[i] === idx); inS[i] = ok ? 1 : 0; members += ok; }
+  const need = [];
+  sel.forEach(e => {
+    if (metric === "k") { need.push([e, 0]); if (META.avg[e]) need.push([e, 1]); }
+    else { if (kind !== "A") need.push([e, 0]); if (kind !== "S" && META.avg[e]) need.push([e, 1]); }
+  });
+  if (!need.length) return { rows: [], members, empty: true };
+  let done = 0;
+  const data = [];
+  for (const [e, k] of need) { data.push([e, k, await cxEvent(e, k)]); if (onProgress) onProgress(++done, need.length); }
+  const score = new Float64Array(NP);
+  let rows;
+  if (metric !== "k") {
+    let baseTotal = 0;
+    for (const [e, k, d] of data) {
+      let cnt = 0; for (let i = 0; i < d.n; i++) cnt += inS[d.ord[i]];
+      const base = cnt + 1; baseTotal += base;
+      let pos = 0, rank = 0, pv = -1;
+      for (let i = 0; i < d.n; i++) { const p = d.ord[i]; if (!inS[p]) continue; pos++; if (d.val[i] !== pv) { rank = pos; pv = d.val[i]; } score[p] += rank - base; }
+    }
+    for (let i = 0; i < NP; i++) if (inS[i]) score[i] += baseTotal;
+  } else {
+    const vs = new Map();
+    for (const [e, k, d] of data) {
+      let rec = 0; for (let i = 0; i < d.n; i++) if (inS[d.ord[i]]) { rec = d.val[i]; break; }
+      const arr = new Float64Array(NP);
+      for (let i = 0; i < d.n; i++) arr[d.ord[i]] = d.val[i];
+      vs.set(e + "_" + k, { rec, arr });
+    }
+    for (const e of sel) {
+      const id = META.events[e], S = vs.get(e + "_0"), A = vs.get(e + "_1");
+      for (let p = 0; p < NP; p++) {
+        if (!inS[p]) continue;
+        const ps = S ? S.arr[p] : 0, pa = A ? A.arr[p] : 0;
+        let sc = 0;
+        if (id === "333mbf") sc = ps && S.rec ? 100 * eff(ps) / eff(S.rec) : 0;
+        else if (BLIND.includes(id)) { const a = pa && A && A.rec ? A.rec / pa : 0, s2 = ps && S && S.rec ? S.rec / ps : 0; sc = 100 * Math.max(a, s2); }
+        else sc = pa && A && A.rec ? 100 * A.rec / pa : 0;
+        score[p] += sc;
+      }
+    }
+    for (let p = 0; p < NP; p++) if (inS[p]) score[p] = Math.round(score[p] / sel.length * 100) / 100;
+  }
+  const list = []; for (let i = 0; i < NP; i++) if (inS[i]) list.push(i);
+  const desc = metric === "k";
+  list.sort((a, b) => (desc ? score[b] - score[a] : score[a] - score[b]) || a - b);
+  const me = profile && profile.id; let mine = null;
+  rows = []; let rank = 0, pv = null;
+  for (let j = 0; j < list.length; j++) {
+    const p = list[j];
+    if (score[p] !== pv) { rank = j + 1; pv = score[p]; }
+    if (rows.length < 1000) rows.push([rank, P.pid[p], P.name[p], score[p], P.ctry[p]]);
+    if (me && P.pid[p] === me) mine = { rank, value: score[p] };
+    if (rows.length >= 1000 && (!me || mine)) break;
+  }
+  return { rows, members, mine };
+}
+
 /* ---------- views ---------- */
 const view = $("#view");
 function setTab(t) {
@@ -265,12 +400,11 @@ function scopeControls(rerender) {
       order.map(([n, i]) => el("option", { value: i }, n)));
     s.value = ST.country; row.append(s);
   }
-  row.append(nbToggle(rerender));
   return row;
 }
 function nbToggle(rerender) {
   return el("button", { class: "btn", "aria-pressed": ST.nb ? "true" : "false", title: "Leave out 3x3 BLD, 4x4 BLD, 5x5 BLD and Multi-Blind",
-    onclick: () => { ST.nb = !ST.nb; store("nb", ST.nb ? "1" : "0"); rerender(); } }, (ST.nb ? "☑" : "☐") + " No blindfolded");
+    onclick: () => { setSel(ST.nb ? META.events.map(() => true) : META.events.map((_, i) => !META.excl.includes(i))); rerender(); } }, (ST.nb ? "☑" : "☐") + " No blindfolded");
 }
 const scopeIdx = () => ST.scope === "w" ? 0 : ST.scope === "c" ? ST.cont : ST.country;
 const scopeName = () => ST.scope === "w" ? "World" : ST.scope === "c" ? META.conts[ST.cont] : META.countries[ST.country][0];
@@ -287,11 +421,24 @@ async function renderBoard(metric) {
       el("button", { "aria-pressed": ST.kind === k ? "true" : "false", onclick: () => { ST.kind = k; store("kind", k); draw(); } }, l)))));
   }
   head.push(scopeControls(draw));
+  head.push(eventPicker(draw));
   card.append(...head, box);
   view.append(card);
-  const key = (metric === "k" ? "k" : ST.kind) + (ST.nb ? "2" : "");
-  let lb;
-  try { lb = (await loadLB(ST.scope, scopeIdx()))[key]; } catch (e) { box.className = "err"; box.textContent = "Couldn't load this list. Try again in a moment."; return; }
+  const mode = selMode();
+  const key = (metric === "k" ? "k" : ST.kind) + (mode === "nb" ? "2" : "");
+  let lb, cmine = null;
+  const mySeq = (renderBoard.seq = (renderBoard.seq || 0) + 1);
+  if (mode === "custom") {
+    try {
+      const sidx = ST.scope === "w" ? 0 : ST.scope === "c" ? 1 : 2;
+      const res = await customBoard(metric === "k" ? "k" : "s", ST.kind === "S" ? "S" : ST.kind === "A" ? "A" : "C", sidx, scopeIdx(), (a, b) => { box.textContent = "Loading event data… " + a + " of " + b; });
+      if (mySeq !== renderBoard.seq) return;
+      if (res.empty) { box.textContent = "None of the selected events has an average. Pick Single or Combined."; return; }
+      lb = res.rows; cmine = res.mine;
+    } catch (e) { box.className = "err"; box.textContent = String(e && e.message || "Couldn't load these events. Try again in a moment."); return; }
+  } else {
+    try { lb = (await loadLB(ST.scope, scopeIdx()))[key]; } catch (e) { box.className = "err"; box.textContent = "Couldn't load this list. Try again in a moment."; return; }
+  }
   if (!lb || !lb.length) { box.textContent = "No ranked competitors here yet."; return; }
   const me = profile && profile.id;
   const t = el("table");
@@ -316,11 +463,13 @@ async function renderBoard(metric) {
   card.append(more);
   const lim = lb.length;
   card.append(el("p", { class: "note" }, "Top " + lim + " for " + scopeName() + ". " +
-    (metric === "k" ? "Kinch score is the average of your per-event scores (record ÷ your PR, " + NEV() + " events, missing events score 0)."
+    (metric === "k" ? "Kinch score is the average of your per-event scores (record ÷ your PR, " + ST.sel.filter(Boolean).length + " events, missing events score 0)."
       : "Lower is better. Events you haven't done count as one rank past the last ranked person.") +
-    (ST.nb ? " Blindfolded events and Multi-Blind are left out." : "") +
+    (mode === "nb" ? " Blindfolded events and Multi-Blind are left out." : mode === "custom" ? " Custom combination of " + ST.sel.filter(Boolean).length + " events." : "") +
     " Tap anyone to open their profile."));
-  if (me) {
+  if (me && mode === "custom") {
+    if (cmine && !lb.some(r => r[1] === me)) card.append(el("p", { class: "note" }, "You (" + profile.name + ") are " + nth(cmine.rank) + " here."));
+  } else if (me) {
     const p = await loadPerson(me).catch(() => null);
     if (p) {
       const s = ST.scope === "w" ? 0 : ST.scope === "c" ? 1 : 2;
@@ -642,7 +791,7 @@ function route() {
 }
 document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => go("#" + b.dataset.tab)));
 window.addEventListener("hashchange", route);
-loadMeta().then(route).catch(() => { $("#stamp").textContent = "Couldn't load the data. Reload to try again."; });
+loadMeta().then(() => { initSel(); route(); }).catch(() => { $("#stamp").textContent = "Couldn't load the data. Reload to try again."; });
 </script>
 </body>
 </html>
