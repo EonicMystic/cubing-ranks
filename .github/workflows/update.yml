@@ -39,6 +39,7 @@ jobs:
           python3 -c "import json; d=json.load(open('site/meta.json')); assert d['people']>100000, 'too few people'; assert len(d['events'])==17"
           test -s site/index.html
           test "$(ls site/p | wc -l)" -gt 200
+          test "$(ls site/ev | wc -l)" -gt 500
 
       - name: Keep the schedule alive
         run: |
