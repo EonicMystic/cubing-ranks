@@ -332,6 +332,12 @@ for (kind, ix), data in mv_out.items():
     with open(os.path.join(mvdir, 'world.json' if kind == 'w' else f'{kind}{ix}.json'), 'w', encoding='utf-8') as f_:
         json.dump(data, f_, ensure_ascii=False, separators=(',', ':'))
 
+for kind_, n_all in (('w', 1), ('c', len(conts)), ('n', len(countries))):
+    for ix_ in range(n_all):
+        fp_ = os.path.join(mvdir, 'world.json' if kind_ == 'w' else f'{kind_}{ix_}.json')
+        if not os.path.exists(fp_):
+            open(fp_, 'w').write('{}')
+
 nbdir = os.path.join(out_dir, 'nb'); shutil.rmtree(nbdir, ignore_errors=True); os.makedirs(nbdir)
 for (m, key), lst in nbc.items():
     fnk = 'w' if key[0] == 'w' else f'{key[0]}{key[1]}'
