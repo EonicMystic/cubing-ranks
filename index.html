@@ -52,6 +52,14 @@
   .rk { color: var(--muted); font-variant-numeric: tabular-nums; width: 3.2em; }
   .rk.top { color: var(--gold); font-weight: 700; }
   .flag { color: var(--muted); font-size: .8rem; }
+  .dl { font-size: .72rem; font-weight: 700; margin-left: 5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .dl.up { color: var(--good); } .dl.dn { color: #d1242f; } .dl.nw { color: var(--accent); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dl.dn { color: #ff7b72; } }
+  :root[data-theme="dark"] .dl.dn { color: #ff7b72; }
+  .badge { font-size: .68rem; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 1px 6px; margin-left: 6px; white-space: nowrap; }
+  .star { border: 0; background: transparent; color: var(--muted); font-size: 1.1rem; cursor: pointer; padding: 0 4px; }
+  .star.on { color: var(--gold); }
+  tr.you td { background: var(--accent-soft); font-weight: 600; }
   .note { color: var(--muted); font-size: .82rem; margin: 8px 0 0; }
   .hit { display: flex; justify-content: space-between; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; margin-top: 6px; cursor: pointer; background: var(--bg); }
   .hit:hover { border-color: var(--accent); }
@@ -113,13 +121,11 @@ const fold = t => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const bucketOf = tok => { const k = tok.slice(0, 3); return /^[a-z0-9]{2,3}$/.test(k) ? k : "_" + (tok.codePointAt(0) % 64); };
 function shardOf(w) { let h = 0; for (let k = 0; k < w.length; k++) h = (h * 31 + w.charCodeAt(k)) % 1000003; return h % 256; }
 async function getRetry(url, json) {
-  // a 404 right after a deploy is usually GitHub Pages catching up, so retry (with a throwaway query string after the first try)
   let last;
-  for (let i = 0; i < 5; i++) {
-    const u = i >= 1 ? url + (url.includes("?") ? "&" : "?") + "cb=" + Date.now() : url;
-    try { const r = await fetch(u); if (r.ok) return json ? r.json() : r.text(); last = new Error(url + " " + r.status); }
+  for (let i = 0; i < 3; i++) {
+    try { const r = await fetch(url); if (r.ok) return json ? r.json() : r.text(); last = new Error(url + " " + r.status); }
     catch (e) { last = e; }
-    await new Promise(r => setTimeout(r, 600 * (i + 1)));
+    await new Promise(r => setTimeout(r, 400 * (i + 1)));
   }
   throw last;
 }
@@ -177,6 +183,66 @@ const n0 = x => Number(x).toLocaleString("en-US");
 const fmtK = v => (v / 100).toFixed(2);
 const nth = n => "#" + n0(n);
 
+function topPct(rank, pop) {
+  const x = rank / pop * 100;
+  return "Top " + (x < 1 ? (Math.max(x, 0.01)).toFixed(x < 0.1 ? 2 : 1) : Math.ceil(x)) + "%";
+}
+async function shareImage(c, name, btn) {
+  const blob = await new Promise(r => c.toBlob(r, "image/png"));
+  if (!blob) { flash(btn, "Couldn't make image"); return; }
+  const file = new File([blob], name, { type: "image/png" });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; } }
+  catch (e) { if (e && e.name === "AbortError") return; }
+  const url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000); flash(btn, "Image saved");
+}
+/* rows: [rank text, name, right text, extra text, extra colour] */
+async function saveList(btn, title, sub, rows, fname) {
+  const W = 1080, H = 1350, F = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, "#0b0f14"); bg.addColorStop(1, "#12212f");
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#58a6ff"; g.font = "700 30px " + F; g.fillText("CUBING RANKS", 72, 96);
+  g.fillStyle = "#e8ecf1"; g.font = "800 62px " + F; g.fillText(title, 72, 176);
+  g.fillStyle = "#98a3b1"; g.font = "400 30px " + F;
+  let sb = sub; while (g.measureText(sb).width > W - 144 && sb.length > 8) sb = sb.slice(0, -2);
+  g.fillText(sb === sub ? sb : sb + "…", 72, 226);
+  const top = rows.slice(0, 10), rh = 92;
+  top.forEach((r, i) => {
+    const y = 270 + i * (rh + 8);
+    rrect(g, 72, y, W - 144, rh, 22, "#131921");
+    g.fillStyle = i < 3 && /^\d+$/.test(r[0]) ? "#e3b341" : "#98a3b1"; g.font = "800 40px " + F; g.fillText(r[0], 100, y + 60);
+    g.fillStyle = "#e8ecf1"; g.font = "700 36px " + F;
+    let nm = r[1]; const maxW = W - 144 - 190 - (r[3] ? 330 : 230);
+    while (g.measureText(nm).width > maxW && nm.length > 4) nm = nm.slice(0, -2);
+    g.fillText(nm === r[1] ? nm : nm + "…", 210, y + 60);
+    g.textAlign = "right";
+    if (r[3]) { g.fillStyle = r[4] || "#56d364"; g.font = "800 34px " + F; g.fillText(r[3], W - 100, y + 60); g.fillStyle = "#98a3b1"; g.font = "400 30px " + F; g.fillText(r[2], W - 100 - 170, y + 60); }
+    else { g.fillStyle = "#58a6ff"; g.font = "800 40px " + F; g.fillText(r[2], W - 100, y + 60); }
+    g.textAlign = "left";
+  });
+  g.fillStyle = "#98a3b1"; g.font = "400 28px " + F;
+  g.fillText(location.host + location.pathname.replace(/index\.html$/, "") + " · " + (META.updated || "").slice(0, 10), 72, H - 52);
+  await shareImage(c, fname, btn);
+}
+
+/* ---------- movement ---------- */
+const SNAPM = ["k", "S", "A", "C"];
+const hasMv = () => !!(META && META.mv && META.mv.since);
+function dlt(cur, prev) {
+  if (!hasMv()) return null;
+  if (!prev) return el("span", { class: "dl nw" }, "new");
+  const d = prev - cur;
+  if (!d) return null;
+  return el("span", { class: "dl " + (d > 0 ? "up" : "dn") }, (d > 0 ? "▲" : "▼") + n0(Math.abs(d)));
+}
+const prevOf = (p, m, s) => p.prev ? p.prev[SNAPM.indexOf(m) * 3 + s] : 0;
+function getList() { try { const a = JSON.parse(store("list") || "[]"); return Array.isArray(a) ? a.filter(x => typeof x === "string") : []; } catch (e) { return []; } }
+function setList(a) { store("list", JSON.stringify(a.slice(0, 15))); }
+const scopeKey = (s, p) => s === 0 ? "w" : s === 1 ? "c" + p.cont : "n" + p.country;
+
 /* ---------- data ---------- */
 async function loadMeta() {
   META = await getRetry("meta.json", true);
@@ -214,7 +280,7 @@ async function loadPerson(id) {
       sum: { S: [h[o + 6], h[o + 7], h[o + 8]], A: [h[o + 9], h[o + 10], h[o + 11]], C: [h[o + 12], h[o + 13], h[o + 14]] },
       sumRank: { S: [h[o + 15], h[o + 16], h[o + 17]], A: [h[o + 18], h[o + 19], h[o + 20]], C: [h[o + 21], h[o + 22], h[o + 23]] },
     });
-    const out = { id, name: p[1], country: b36(p[2]), evs, all: mk(0), nb: mk(24) };
+    const out = { id, name: p[1], country: b36(p[2]), evs, all: mk(0), nb: mk(24), prev: p[5] ? p[5].split(",").map(b36) : null };
     out.cont = META.countries[out.country][1];
     personCache.set(id, out);
     return out;
@@ -418,11 +484,15 @@ async function renderBoard(metric) {
   const box = el("div", { class: "loading" }, "Loading…");
   const draw = () => renderBoard(metric);
   const head = [];
+  head.push(el("div", { class: "row" }, el("div", { class: "seg" }, [["lb", "Leaderboard"], ["mv", "Biggest movers"], ["rs", "Rising stars"]].map(([k, l]) =>
+    el("button", { "aria-pressed": (ST.view || "lb") === k ? "true" : "false", onclick: () => { ST.view = k; draw(); } }, l)))));
   if (metric !== "k") {
     head.push(el("div", { class: "row" }, el("div", { class: "seg" }, [["S", "Single"], ["A", "Average"], ["C", "Combined"]].map(([k, l]) =>
       el("button", { "aria-pressed": ST.kind === k ? "true" : "false", onclick: () => { ST.kind = k; store("kind", k); draw(); } }, l)))));
   }
   head.push(scopeControls(draw));
+  if (ST.view === "mv") { card.append(...head, box); view.append(card); return renderMovers(metric, card, box); }
+  if (ST.view === "rs") { card.append(...head, box); view.append(card); return renderRising(metric, card, box); }
   head.push(eventPicker(draw));
   card.append(...head, box);
   view.append(card);
@@ -455,7 +525,7 @@ async function renderBoard(metric) {
     const rk = (tied ? "T-" : "") + r[0];
     const tr = el("tr", { class: "go" + (me === r[1] ? " me" : ""), onclick: () => go("#lookup/" + r[1]) },
       el("td", { class: "rk" + (r[0] <= 3 ? " top" : "") }, rk),
-      el("td", {}, r[2], " ", el("span", { class: "flag" }, ST.scope === "n" ? "" : META.countries[r[4]][0])),
+      el("td", {}, r[2], " ", el("span", { class: "flag" }, ST.scope === "n" ? "" : META.countries[r[4]][0]), r.length > 5 ? dlt(r[0], r[5]) : null),
       el("td", { class: "num" }, metric === "k" ? r[3].toFixed(2) : n0(r[3])));
     body.append(tr);
   });
@@ -463,6 +533,12 @@ async function renderBoard(metric) {
   box.replaceWith(t);
   addRows();
   card.append(more);
+  const shareBtn = el("button", { class: "btn", style: "margin:10px 0 0 8px", onclick: e => {
+    const rows = lb.slice(0, 10).map((r, i) => { const tied = (lb[i - 1] && lb[i - 1][0] === r[0]) || (lb[i + 1] && lb[i + 1][0] === r[0]);
+      return [(tied ? "T-" : "") + r[0], r[2], metric === "k" ? r[3].toFixed(2) : n0(r[3])]; });
+    saveList(e.target, "Top 10 · " + scopeName(), (metric === "k" ? "Kinch Ranks" : "Sum of Ranks · " + ({ S: "Single", A: "Average", C: "Combined" })[ST.kind]) +
+      (mode === "nb" ? " · no blindfolded" : mode === "custom" ? " · " + ST.sel.filter(Boolean).length + " events" : ""), rows, "cubing-ranks-top10.png"); } }, "Save top 10 image");
+  card.append(shareBtn);
   const lim = lb.length;
   card.append(el("p", { class: "note" }, "Top " + lim + " for " + scopeName() + ". " +
     (metric === "k" ? "Kinch score is the average of your per-event scores (record ÷ your PR, " + ST.sel.filter(Boolean).length + " events, missing events score 0)."
@@ -484,19 +560,91 @@ async function renderBoard(metric) {
   }
 }
 
+async function renderRising(metric, card, box) {
+  const m = metric === "k" ? "k" : ST.kind;
+  if (!META.rs) { box.textContent = "Rising stars isn't available yet."; return; }
+  const Y = META.rs.year, N = META.rs.n;
+  const win = Math.min(N, Math.max(1, +ST.rsWin || N));
+  const file = ST.scope === "w" ? "world" : (ST.scope === "c" ? "c" + ST.cont : "n" + ST.country);
+  let data;
+  try { data = await getRetry("rs/" + file + ".json", true); } catch (e) { box.className = "err"; box.textContent = "Couldn't load this list. Try again in a moment."; return; }
+  const rows = (data && data[m] && data[m][String(win)]) || [];
+  const labels = [];
+  for (let n = 1; n <= N; n++) labels.push([n, n === 1 ? "Started " + Y : "Started " + (Y - n + 1) + "+"]);
+  const sw = el("div", { class: "row" }, el("div", { class: "seg" }, labels.map(([n, l]) =>
+    el("button", { "aria-pressed": win === n ? "true" : "false", onclick: () => { ST.rsWin = n; renderBoard(metric); } }, l))));
+  const out = [sw];
+  if (!rows.length) out.push(el("p", { class: "note" }, "Nobody who started in this window is ranked here yet."));
+  else {
+    const t = el("table");
+    t.append(el("thead", {}, el("tr", {}, ["#", "Name", metric === "k" ? "Kinch" : "Sum", "Overall"].map((c, i) => el("th", i > 1 ? { class: "num" } : {}, c)))));
+    const body = el("tbody"); let last = 0, lastPos = 0;
+    rows.forEach((r, i) => {
+      const pos = i > 0 && rows[i - 1][3] === r[3] ? lastPos : i + 1; lastPos = pos;
+      const tied = (rows[i - 1] && rows[i - 1][3] === r[3]) || (rows[i + 1] && rows[i + 1][3] === r[3]);
+      r.pos = (tied ? "T-" : "") + pos;
+      body.append(el("tr", { class: "go" + (profile && profile.id === r[0] ? " me" : ""), onclick: () => go("#lookup/" + r[0]) },
+        el("td", { class: "rk" + (pos <= 3 ? " top" : "") }, r.pos),
+        el("td", {}, r[1], " ", el("span", { class: "flag" }, ST.scope === "n" ? "" : META.countries[r[2]][0])),
+        el("td", { class: "num" }, metric === "k" ? r[4].toFixed(2) : n0(r[4])),
+        el("td", { class: "num flag" }, nth(r[3]))));
+    });
+    t.append(body); out.push(t);
+    out.push(el("button", { class: "btn", style: "margin-top:10px", onclick: e => saveList(e.target, "Rising stars · " + scopeName(), (metric === "k" ? "Kinch Ranks" : "Sum of Ranks · " + ({ S: "Single", A: "Average", C: "Combined" })[ST.kind]) + " · " + labels[win - 1][1],
+      rows.slice(0, 10).map(r => [r.pos, r[1], metric === "k" ? r[4].toFixed(2) : n0(r[4])]), "cubing-ranks-rising.png") }, "Save top 10 image"));
+  }
+  out.push(el("p", { class: "note" }, "Ranked among people whose first competition was in the chosen window (their WCA ID starts with the year). The Overall column is their rank among everyone in " + scopeName() + ". Top " + rows.length + " shown. All 17 events. Tap anyone to open their profile."));
+  box.replaceWith(...out);
+}
+
+async function renderMovers(metric, card, box) {
+  const m = metric === "k" ? "k" : ST.kind;
+  if (!hasMv()) { box.textContent = "Rank movement appears after the site has a few days of history. Check back soon."; return; }
+  const file = ST.scope === "w" ? "world" : (ST.scope === "c" ? "c" + ST.cont : "n" + ST.country);
+  let data;
+  try { data = await getRetry("mv/" + file + ".json", true); } catch (e) { box.className = "err"; box.textContent = "Couldn't load this list. Try again in a moment."; return; }
+  const d = (data && data[m]) || { up: [], down: [] };
+  const dir = ST.mvDir || "up";
+  const sw = el("div", { class: "row" }, el("div", { class: "seg" }, [["up", "▲ Climbers"], ["down", "▼ Drops"]].map(([k, l]) =>
+    el("button", { "aria-pressed": dir === k ? "true" : "false", onclick: () => { ST.mvDir = k; renderBoard(metric); } }, l))));
+  const lim = META.mv.limit[ST.scope];
+  const rows = d[dir] || [];
+  const out = [sw];
+  if (!rows.length) out.push(el("p", { class: "note" }, "No movers to show here yet."));
+  else {
+    const t = el("table");
+    t.append(el("thead", {}, el("tr", {}, ["Now", "Name", "Change"].map((c, i) => el("th", i === 2 ? { class: "num" } : {}, c)))));
+    const body = el("tbody");
+    rows.forEach(r => {
+      const diff = r[4] - r[3];
+      body.append(el("tr", { class: "go" + (profile && profile.id === r[0] ? " me" : ""), onclick: () => go("#lookup/" + r[0]) },
+        el("td", { class: "rk" }, r[3]),
+        el("td", {}, r[1], " ", el("span", { class: "flag" }, ST.scope === "n" ? "" : META.countries[r[2]][0]), r[4] > lim && diff > 0 ? el("span", { class: "badge" }, "New to top " + n0(lim)) : null),
+        el("td", { class: "num" }, el("span", { class: "flag" }, n0(r[4]) + " → "), el("span", { class: "dl " + (diff > 0 ? "up" : "dn"), style: "margin:0" }, (diff > 0 ? "▲" : "▼") + n0(Math.abs(diff))))));
+    });
+    t.append(body); out.push(t);
+  }
+  if (rows.length) out.push(el("button", { class: "btn", onclick: e => {
+    const rr = rows.slice(0, 10).map((r, i) => { const df = r[4] - r[3]; return [String(i + 1), r[1], n0(r[4]) + " → " + n0(r[3]), (df > 0 ? "▲" : "▼") + n0(Math.abs(df)), df > 0 ? "#56d364" : "#ff7b72"]; });
+    saveList(e.target, (dir === "up" ? "Biggest climbers · " : "Biggest drops · ") + scopeName(), (metric === "k" ? "Kinch Ranks" : "Sum of Ranks · " + ({ S: "Single", A: "Average", C: "Combined" })[ST.kind]) + " · since " + META.mv.since, rr, "cubing-ranks-movers.png"); } }, "Save top 10 image"));
+  out.push(el("p", { class: "note" }, "Biggest rank changes among the top " + n0(lim) + " in " + scopeName() + ", compared with " + META.mv.since + ". " +
+    (metric === "k" ? "Kinch Ranks" : "Sum of Ranks (" + ({ S: "Single", A: "Average", C: "Combined" })[ST.kind] + ")") + ", all 17 events. Tap anyone to open their profile."));
+  box.replaceWith(...out);
+}
+
 function summaryCard(p0) {
   const p = Object.assign({}, p0, vOf(p0));
   const labels = [["World", 0], ["Continent · " + META.conts[p.cont], 1], ["Country · " + META.countries[p.country][0], 2]];
   const pop = [META.pop.w, META.pop.c[p.cont], META.pop.n[p.country]];
-  const block = (title, valFn, rankFn, big) => el("div", { class: "card" },
+  const block = (title, valFn, rankFn, m) => el("div", { class: "card" },
     el("div", { class: "row", style: "justify-content:space-between;margin-bottom:4px" }, el("b", {}, title)),
-    labels.map(([l, s]) => el("div", { class: "scope" }, el("span", {}, l),
-      el("span", {}, el("b", {}, valFn(s)), " ", el("span", { class: "pill" }, nth(rankFn(s)) + " of " + n0(pop[s]))))));
+    labels.map(([l, s]) => el("div", { class: "scope" }, el("span", {}, l, " ", el("span", { class: "flag" }, "· " + topPct(rankFn(s), pop[s]))),
+      el("span", {}, el("b", {}, valFn(s)), " ", el("span", { class: "pill" }, nth(rankFn(s)) + " of " + n0(pop[s])), ST.nb ? null : dlt(rankFn(s), prevOf(p0, m, s))))));
   return el("div", { class: "grid" },
-    block("Kinch Ranks" + (ST.nb ? " · no blindfolded" : ""), s => fmtK(p.kin[s]), s => p.kinRank[s]),
-    block("Sum of Ranks · Combined" + (ST.nb ? " · no BLD" : ""), s => n0(p.sum.C[s]), s => p.sumRank.C[s]),
-    block("Sum of Ranks · Single" + (ST.nb ? " · no BLD" : ""), s => n0(p.sum.S[s]), s => p.sumRank.S[s]),
-    block("Sum of Ranks · Average" + (ST.nb ? " · no BLD" : ""), s => n0(p.sum.A[s]), s => p.sumRank.A[s]));
+    block("Kinch Ranks" + (ST.nb ? " · no blindfolded" : ""), s => fmtK(p.kin[s]), s => p.kinRank[s], "k"),
+    block("Sum of Ranks · Combined" + (ST.nb ? " · no BLD" : ""), s => n0(p.sum.C[s]), s => p.sumRank.C[s], "C"),
+    block("Sum of Ranks · Single" + (ST.nb ? " · no BLD" : ""), s => n0(p.sum.S[s]), s => p.sumRank.S[s], "S"),
+    block("Sum of Ranks · Average" + (ST.nb ? " · no BLD" : ""), s => n0(p.sum.A[s]), s => p.sumRank.A[s], "A"));
 }
 
 function eventsCard(p, si) {
@@ -520,6 +668,73 @@ function eventsCard(p, si) {
   card.append(el("p", { class: "note" }, "Ranks shown are for the scope you picked above. Missing results count as one rank past the last ranked person in that scope."));
   return card;
 }
+async function neighborsCard(p0, si0) {
+  const card = el("div", { class: "card" });
+  let m = "k", si = si0;
+  const body = el("div", {}, el("div", { class: "loading" }, "Loading…"));
+  const head = el("div", { class: "row", style: "justify-content:space-between;margin-bottom:6px" });
+  const draw = async () => {
+    head.replaceChildren(el("b", {}, "Around you"),
+      el("div", { class: "row", style: "margin:0" },
+        el("div", { class: "seg" }, [["k", "Kinch"], ["C", "Sum"]].map(([k, l]) => el("button", { "aria-pressed": m === k ? "true" : "false", onclick: () => { m = k; draw(); } }, l))),
+        el("div", { class: "seg" }, SCOPES.map(([k, l], i) => el("button", { "aria-pressed": si === i ? "true" : "false", onclick: () => { si = i; draw(); } }, l)))));
+    body.replaceChildren(el("div", { class: "loading" }, "Loading…"));
+    const rank = m === "k" ? p0.all.kinRank[si] : p0.all.sumRank.C[si];
+    const pop = si === 0 ? META.pop.w : si === 1 ? META.pop.c[p0.cont] : META.pop.n[p0.country];
+    const lastRank = Math.min(META.mv.nb_limit, pop), CH = META.mv.nb_chunk;
+    if (rank > META.mv.nb_limit) { body.replaceChildren(el("p", { class: "note" }, "You're ranked " + nth(rank) + " here. Neighbors are listed for the top " + n0(META.mv.nb_limit) + "."));  return; }
+    const c = Math.floor((rank - 1) / CH), need = [c];
+    if ((rank - 1) % CH < 6 && c > 0) need.unshift(c - 1);
+    if ((rank - 1) % CH >= CH - 6 && (c + 1) * CH < lastRank) need.push(c + 1);
+    let rows = [];
+    try {
+      const txts = await Promise.all(need.map(n => getRetry("nb/" + m + "_" + scopeKey(si, p0) + "_" + n + ".txt")));
+      txts.forEach(t => t.split("\n").filter(Boolean).forEach(l => { const a = l.split("|"); rows.push({ r: +a[0], id: a[1], name: a[2], c: b36(a[3]), v: +a[4] }); }));
+    } catch (e) { body.replaceChildren(el("div", { class: "err" }, "Couldn't load neighbors.")); return; }
+    const ix = rows.findIndex(r => r.id === p0.id);
+    if (ix < 0) { body.replaceChildren(el("p", { class: "note" }, "Not available for this ranking.")); return; }
+    const mine = rows[ix].v, list = rows.slice(Math.max(0, ix - 5), ix + 6);
+    const t = el("table");
+    t.append(el("thead", {}, el("tr", {}, ["#", "Name", m === "k" ? "Kinch" : "Sum", "Gap"].map((c2, i) => el("th", i > 1 ? { class: "num" } : {}, c2)))));
+    const tb = el("tbody");
+    list.forEach(r => {
+      const g = m === "k" ? r.v - mine : r.v - mine;
+      const gt = r.id === p0.id ? "you" : m === "k" ? (g > 0 ? "+" : "") + g.toFixed(2) : (g > 0 ? "+" : "") + n0(g);
+      tb.append(el("tr", { class: "go" + (r.id === p0.id ? " you" : ""), onclick: () => r.id !== p0.id && go("#lookup/" + r.id) },
+        el("td", { class: "rk" }, r.r), el("td", {}, r.name, " ", el("span", { class: "flag" }, si === 2 ? "" : META.countries[r.c][0])),
+        el("td", { class: "num" }, m === "k" ? r.v.toFixed(2) : n0(r.v)), el("td", { class: "num flag" }, gt)));
+    });
+    t.append(tb);
+    body.replaceChildren(t, el("p", { class: "note" }, "Five people ranked above and below you. Gap is their score minus yours" + (m === "C" ? " (lower Sum is better)." : ".")));
+  };
+  card.append(head, body);
+  draw();
+  return card;
+}
+function myListCard() {
+  const ids = getList();
+  if (!ids.length) return null;
+  const card = el("div", { class: "card" }, el("div", { class: "row", style: "margin-bottom:6px" }, el("b", {}, "My list")));
+  const host = el("div", {}, el("div", { class: "loading" }, "Loading…"));
+  card.append(host);
+  Promise.all(ids.map(id => loadPerson(id).catch(() => null))).then(ps => {
+    const t = el("table");
+    t.append(el("thead", {}, el("tr", {}, ["Name", "Kinch (world)", "Sum (world)", ""].map((c, i) => el("th", i > 0 && i < 3 ? { class: "num" } : {}, c)))));
+    const tb = el("tbody");
+    ps.forEach((p, i) => {
+      if (!p) return;
+      const a = p.all;
+      tb.append(el("tr", { class: "go", onclick: () => go("#lookup/" + p.id) },
+        el("td", {}, p.name),
+        el("td", { class: "num" }, nth(a.kinRank[0]), dlt(a.kinRank[0], prevOf(p, "k", 0))),
+        el("td", { class: "num" }, nth(a.sumRank.C[0]), dlt(a.sumRank.C[0], prevOf(p, "C", 0))),
+        el("td", { class: "num" }, el("button", { class: "star", title: "Remove", onclick: e => { e.stopPropagation(); setList(getList().filter(x => x !== p.id)); const nc = myListCard(); card.replaceWith(...(nc ? [nc] : [])); } }, "✕"))));
+    });
+    t.append(tb);
+    host.replaceChildren(t, el("p", { class: "note" }, "Saved on this device. Tap ☆ on any profile to add someone (up to 15). Changes compare with " + (hasMv() ? META.mv.since : "an earlier day once there's history") + "."));
+  });
+  return card;
+}
 let lookupHost = null;
 function renderLookupBody(p, si) {
   const keep = lookupHost.querySelector(".events-host");
@@ -537,19 +752,23 @@ async function showPerson(id) {
     el("div", { class: "flag" }, id + " · " + META.countries[p.country][0] + " · " + META.conts[p.cont]),
     el("div", { class: "row", style: "margin-top:10px;margin-bottom:0" },
       el("button", { class: "btn", onclick: () => { profile = { id, name: p.name }; store("profile", JSON.stringify(profile)); showPerson(id); } }, isMe ? "✓ This is me" : "This is me"),
+      el("button", { class: "btn", onclick: e => { const l = getList(); if (l.includes(id)) setList(l.filter(x => x !== id)); else if (l.length >= 15) { flash(e.target, "List is full (15)"); return; } else setList([id].concat(l)); showPerson(id); refreshList(); } }, getList().includes(id) ? "★ In my list" : "☆ My list"),
       el("button", { class: "btn", onclick: () => go("#compare/" + id) }, "Compare"),
       el("button", { class: "btn", onclick: e => saveCard(e.target, p) }, "Save image"),
       nbToggle(() => showPerson(id)),
       el("a", { class: "btn", href: "https://www.worldcubeassociation.org/persons/" + id, target: "_blank", rel: "noopener", style: "text-decoration:none" }, "WCA profile")));
   const si = +store("lscope") || 0;
-  host.replaceChildren(top, summaryCard(p), el("div", { class: "improve-host" }, improveCard(p)), el("div", { class: "events-host" }, eventsCard(p, si)));
+  host.replaceChildren(top, summaryCard(p), hasMv() && !ST.nb ? await neighborsCard(p, si) : el("span"), el("div", { class: "improve-host" }, improveCard(p)), el("div", { class: "events-host" }, eventsCard(p, si)));
   lookupHost = host;
 }
+function refreshList() { const h = $("#listhost"); if (!h) return; const c = myListCard(); h.replaceChildren(...(c ? [c] : [])); }
 function renderLookup(id) {
   setTab("lookup");
   view.replaceChildren();
   const person = el("div", { id: "person" });
-  view.append(searchBox(pid => go("#lookup/" + pid)), person);
+  const listHost = el("div", { id: "listhost" });
+  view.append(searchBox(pid => go("#lookup/" + pid)), listHost, person);
+  refreshList();
   const target = id || (profile && profile.id);
   if (target) { if (!id) history.replaceState(null, "", "#lookup/" + target); showPerson(target); }
   else person.append(el("p", { class: "note" }, "Search for yourself to see your Kinch score and Sum of Ranks in your country, continent and the world, plus a rank for every event."));
@@ -777,7 +996,7 @@ function renderAbout() {
     el("p", {}, el("b", {}, "Sum of Ranks. "), "Add up your rank in every event. Single uses your best single in all 17 events, Average uses your best average in the 16 events that have one, and Combined adds both. If you haven't done an event, you're given one rank past the last ranked person in that event, so skipping an event never helps. Lower is better. Ties share the best rank."),
     el("p", {}, el("b", {}, "Kinch Ranks. "), "For each event, your score is the record ÷ your personal best × 100 (so the record holder scores 100). Your Kinch score is the average of all 17 events, with 0 for events you haven't done. Events use averages, except the blindfolded events (best of single or average ratio), Fewest Moves (average), and Multi-Blind (points and time). Higher is better."),
     el("p", {}, el("b", {}, "Continent and country. "), "The same math applies inside each region: the record is the best in that region, and ranks are among people from that region."),
-    el("p", {}, "The No blindfolded option leaves out 3x3, 4x4 and 5x5 Blindfolded and Multi-Blind (Kinch then averages 13 events). The Events tab is the standard single and average rankings for each event, deep lists for the world, continents and countries. Rankings are built nightly from the WCA results export. Sum of Ranks and Kinch lists show the top 1,000 for the world and continents and the top 500 for countries; Lookup works for everyone, and you can compare two people or save a shareable image there."),
+    el("p", {}, "The No blindfolded option leaves out 3x3, 4x4 and 5x5 Blindfolded and Multi-Blind (Kinch then averages 13 events). The Events tab is the standard single and average rankings for each event, deep lists for the world, continents and countries. Rankings are built nightly from the WCA results export. Sum of Ranks and Kinch lists show the top 1,000 for the world and continents and the top 500 for countries; Lookup works for everyone. Arrows show how many places someone moved since the last comparison day (about a week back once history builds up) in the all-events rankings. Biggest movers lists the largest climbs and drops among the top 5,000 (top 1,000 for countries), Rising stars ranks people who started competing in the last three years, Around you shows the people ranked next to you, and My list keeps people you follow on this device. You can also compare two people or save a shareable image there."),
     el("button", { class: "btn", onclick: () => go("#sum") }, "Back")));
 }
 
