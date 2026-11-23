@@ -92,10 +92,11 @@
   <h1>Cubing Ranks</h1>
   <p class="sub" id="stamp">Loading…</p>
   <div class="tabs" role="tablist">
+    <button role="tab" data-tab="lookup">Lookup</button>
     <button role="tab" data-tab="sum">Sum of Ranks</button>
     <button role="tab" data-tab="kinch">Kinch</button>
     <button role="tab" data-tab="events">Events</button>
-    <button role="tab" data-tab="lookup">Lookup</button>
+    <button role="tab" data-tab="rising">Rising</button>
   </div>
   <div id="view"></div>
   <footer>Built from the public WCA results export. Not affiliated with the WCA. <a href="#about" id="aboutLink">How it works</a></footer>
@@ -484,7 +485,7 @@ async function renderBoard(metric) {
   const box = el("div", { class: "loading" }, "Loading…");
   const draw = () => renderBoard(metric);
   const head = [];
-  head.push(el("div", { class: "row" }, el("div", { class: "seg" }, [["lb", "Leaderboard"], ["mv", "Biggest movers"], ["rs", "Rising stars"]].map(([k, l]) =>
+  head.push(el("div", { class: "row" }, el("div", { class: "seg" }, [["lb", "Leaderboard"], ["mv", "Biggest movers"]].map(([k, l]) =>
     el("button", { "aria-pressed": (ST.view || "lb") === k ? "true" : "false", onclick: () => { ST.view = k; draw(); } }, l)))));
   if (metric !== "k") {
     head.push(el("div", { class: "row" }, el("div", { class: "seg" }, [["S", "Single"], ["A", "Average"], ["C", "Combined"]].map(([k, l]) =>
@@ -492,7 +493,6 @@ async function renderBoard(metric) {
   }
   head.push(scopeControls(draw));
   if (ST.view === "mv") { card.append(...head, box); view.append(card); return renderMovers(metric, card, box); }
-  if (ST.view === "rs") { card.append(...head, box); view.append(card); return renderRising(metric, card, box); }
   head.push(eventPicker(draw));
   card.append(...head, box);
   view.append(card);
@@ -560,6 +560,22 @@ async function renderBoard(metric) {
   }
 }
 
+async function renderRisingTab() {
+  setTab("rising");
+  view.replaceChildren();
+  const metric = ST.rsMetric === "S" ? "S" : "k";
+  const card = el("div", { class: "card" });
+  const box = el("div", { class: "loading" }, "Loading…");
+  const draw = () => renderRisingTab();
+  card.append(
+    el("div", { class: "row" }, el("div", { class: "seg" }, [["k", "Kinch"], ["S", "Sum of Ranks"]].map(([k, l]) =>
+      el("button", { "aria-pressed": metric === k ? "true" : "false", onclick: () => { ST.rsMetric = k; draw(); } }, l)))));
+  if (metric === "S") card.append(el("div", { class: "row" }, el("div", { class: "seg" }, [["S", "Single"], ["A", "Average"], ["C", "Combined"]].map(([k, l]) =>
+    el("button", { "aria-pressed": ST.kind === k ? "true" : "false", onclick: () => { ST.kind = k; store("kind", k); draw(); } }, l)))));
+  card.append(scopeControls(draw), box);
+  view.append(card);
+  return renderRising(metric, card, box);
+}
 async function renderRising(metric, card, box) {
   const m = metric === "k" ? "k" : ST.kind;
   if (!META.rs) { box.textContent = "Rising stars isn't available yet."; return; }
@@ -572,7 +588,7 @@ async function renderRising(metric, card, box) {
   const labels = [];
   for (let n = 1; n <= N; n++) labels.push([n, n === 1 ? "Started " + Y : "Started " + (Y - n + 1) + "+"]);
   const sw = el("div", { class: "row" }, el("div", { class: "seg" }, labels.map(([n, l]) =>
-    el("button", { "aria-pressed": win === n ? "true" : "false", onclick: () => { ST.rsWin = n; renderBoard(metric); } }, l))));
+    el("button", { "aria-pressed": win === n ? "true" : "false", onclick: () => { ST.rsWin = n; renderRisingTab(); } }, l))));
   const out = [sw];
   if (!rows.length) out.push(el("p", { class: "note" }, "Nobody who started in this window is ranked here yet."));
   else {
@@ -996,8 +1012,8 @@ function renderAbout() {
     el("p", {}, el("b", {}, "Sum of Ranks. "), "Add up your rank in every event. Single uses your best single in all 17 events, Average uses your best average in the 16 events that have one, and Combined adds both. If you haven't done an event, you're given one rank past the last ranked person in that event, so skipping an event never helps. Lower is better. Ties share the best rank."),
     el("p", {}, el("b", {}, "Kinch Ranks. "), "For each event, your score is the record ÷ your personal best × 100 (so the record holder scores 100). Your Kinch score is the average of all 17 events, with 0 for events you haven't done. Events use averages, except the blindfolded events (best of single or average ratio), Fewest Moves (average), and Multi-Blind (points and time). Higher is better."),
     el("p", {}, el("b", {}, "Continent and country. "), "The same math applies inside each region: the record is the best in that region, and ranks are among people from that region."),
-    el("p", {}, "The No blindfolded option leaves out 3x3, 4x4 and 5x5 Blindfolded and Multi-Blind (Kinch then averages 13 events). The Events tab is the standard single and average rankings for each event, deep lists for the world, continents and countries. Rankings are built nightly from the WCA results export. Sum of Ranks and Kinch lists show the top 1,000 for the world and continents and the top 500 for countries; Lookup works for everyone. Arrows show how many places someone moved since the last comparison day (about a week back once history builds up) in the all-events rankings. Biggest movers lists the largest climbs and drops among the top 5,000 (top 1,000 for countries), Rising stars ranks people who started competing in the last three years, Around you shows the people ranked next to you, and My list keeps people you follow on this device. You can also compare two people or save a shareable image there."),
-    el("button", { class: "btn", onclick: () => go("#sum") }, "Back")));
+    el("p", {}, "The No blindfolded option leaves out 3x3, 4x4 and 5x5 Blindfolded and Multi-Blind (Kinch then averages 13 events). The Events tab is the standard single and average rankings for each event, deep lists for the world, continents and countries. Rankings are built nightly from the WCA results export. Sum of Ranks and Kinch lists show the top 1,000 for the world and continents and the top 500 for countries; Lookup works for everyone. Arrows show how many places someone moved since the last comparison day (about a week back once history builds up) in the all-events rankings. Biggest movers lists the largest climbs and drops among the top 5,000 (top 1,000 for countries), the Rising tab ranks people who started competing in the last three years, Around you shows the people ranked next to you, and My list keeps people you follow on this device. You can also compare two people or save a shareable image there."),
+    el("button", { class: "btn", onclick: () => go("#lookup") }, "Back")));
 }
 
 function route() {
@@ -1005,10 +1021,12 @@ function route() {
   if (!META) return;
   if (h.startsWith("compare")) { const q = h.split("/"); return renderCompare((q[1] || "").toUpperCase(), (q[2] || "").toUpperCase() || null); }
   if (h === "events") return renderEvents();
+  if (h === "rising") return renderRisingTab();
   if (h.startsWith("lookup")) return renderLookup((h.split("/")[1] || "").toUpperCase() || null);
   if (h === "kinch") return renderBoard("k");
   if (h === "about") return renderAbout();
-  return renderBoard("S");
+  if (h === "sum") return renderBoard("S");
+  return renderLookup(null);
 }
 document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => go("#" + b.dataset.tab)));
 window.addEventListener("hashchange", route);
