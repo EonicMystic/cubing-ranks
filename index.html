@@ -113,11 +113,13 @@ const fold = t => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const bucketOf = tok => { const k = tok.slice(0, 3); return /^[a-z0-9]{2,3}$/.test(k) ? k : "_" + (tok.codePointAt(0) % 64); };
 function shardOf(w) { let h = 0; for (let k = 0; k < w.length; k++) h = (h * 31 + w.charCodeAt(k)) % 1000003; return h % 256; }
 async function getRetry(url, json) {
+  // a 404 right after a deploy is usually GitHub Pages catching up, so retry (with a throwaway query string after the first try)
   let last;
-  for (let i = 0; i < 3; i++) {
-    try { const r = await fetch(url); if (r.ok) return json ? r.json() : r.text(); last = new Error(url + " " + r.status); }
+  for (let i = 0; i < 5; i++) {
+    const u = i >= 1 ? url + (url.includes("?") ? "&" : "?") + "cb=" + Date.now() : url;
+    try { const r = await fetch(u); if (r.ok) return json ? r.json() : r.text(); last = new Error(url + " " + r.status); }
     catch (e) { last = e; }
-    await new Promise(r => setTimeout(r, 400 * (i + 1)));
+    await new Promise(r => setTimeout(r, 600 * (i + 1)));
   }
   throw last;
 }
