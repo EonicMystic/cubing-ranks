@@ -26,10 +26,20 @@ jobs:
       - name: Download WCA export
         run: curl -sSL --fail --retry 3 -o "$RUNNER_TEMP/export.zip" https://www.worldcubeassociation.org/export/results/v2/tsv
 
+      - name: Get saved rank history
+        run: |
+          mkdir -p "$RUNNER_TEMP/hist"
+          if git fetch -q --depth 1 origin rank-history; then
+            git archive FETCH_HEAD | tar -x -C "$RUNNER_TEMP/hist"
+            echo "Loaded saved history:"; ls "$RUNNER_TEMP/hist"
+          else
+            echo "No saved history yet, starting fresh"
+          fi
+
       - name: Build site
         run: |
           mkdir -p site
-          python3 build_ranks.py "$RUNNER_TEMP/export.zip" site
+          python3 build_ranks.py "$RUNNER_TEMP/export.zip" site "$RUNNER_TEMP/hist"
           cp index.html site/index.html
           cp ranks-preview.png site/ranks-preview.png || echo "no preview image found, skipping"
 
@@ -41,6 +51,21 @@ jobs:
           test "$(ls site/p | wc -l)" -gt 200
           test "$(ls site/ev | wc -l)" -gt 500
           test "$(ls site/cx | wc -l)" -ge 30
+          test "$(ls site/mv | wc -l)" -gt 200
+          test "$(ls site/nb | wc -l)" -gt 500
+          test "$(ls site/rs | wc -l)" -gt 200
+          test "$(ls "$RUNNER_TEMP/hist" | wc -l)" -ge 1
+
+      - name: Save rank history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          d=$(mktemp -d)
+          cp "$RUNNER_TEMP"/hist/ranks_*.txt.gz "$d/"
+          (cd "$d" && git init -q -b hist && git config user.name github-actions && git config user.email github-actions@users.noreply.github.com \
+            && git add . && git commit -qm "Rank history" \
+            && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" hist:rank-history) \
+            && echo "Saved rank history" || echo "Could not save rank history"
 
       - name: Keep the schedule alive
         run: |
