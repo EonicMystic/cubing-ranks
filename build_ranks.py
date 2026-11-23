@@ -9,7 +9,7 @@ Writes into <output_dir>:
   p/<n>.txt            per-person data, 256 small shards
   p/s_<key>.txt        name search buckets
 """
-import gzip, json, math, os, re, shutil, struct, sys, tempfile, unicodedata, zipfile
+import datetime, gzip, json, math, os, re, shutil, struct, sys, tempfile, unicodedata, zipfile
 from array import array
 from collections import defaultdict
 
@@ -248,6 +248,37 @@ def scope_key(s, i):
     return ('w', 0) if s == 0 else (('c', p_cont[i]) if s == 1 else ('n', p_country[i]))
 
 
+# ---------- yesterday's ranks (for movement): compact daily snapshots kept in a history folder ----------
+SNAPM = ['k', 'S', 'A', 'C']                       # metrics with movement tracking (all 17 events)
+MV_LIMIT = {'w': 5000, 'c': 5000, 'n': 1000}       # movers lists cover people currently inside these ranks
+MV_ROWS = {'w': 100, 'c': 100, 'n': 50}
+NB_LIMIT, NB_CHUNK = 25000, 500                     # "around you" files: top 25,000 per scope, 500 per file
+hist_dir = sys.argv[3] if len(sys.argv) > 3 else out_dir.rstrip('/') + '_history'
+os.makedirs(hist_dir, exist_ok=True)
+today_s = stamp[:10] or datetime.date.today().isoformat()
+today_d = datetime.date.fromisoformat(today_s)
+snap_files = {}
+for fn_ in os.listdir(hist_dir):
+    mm = re.fullmatch(r'ranks_(\d{4}-\d{2}-\d{2})\.txt\.gz', fn_)
+    if mm:
+        snap_files[datetime.date.fromisoformat(mm.group(1))] = os.path.join(hist_dir, fn_)
+earlier = sorted(d for d in snap_files if d < today_d)
+base_date = None
+if earlier:
+    ok_ = [d for d in earlier if d <= today_d - datetime.timedelta(days=7)]
+    base_date = ok_[-1] if ok_ else earlier[0]      # newest snapshot at least a week old, else the oldest we have
+basesnap = {}
+if base_date:
+    with gzip.open(snap_files[base_date], 'rt', encoding='utf-8') as f_:
+        for ln in f_:
+            a_ = ln.rstrip('\n').split(',')
+            basesnap[a_[0]] = [int(x, 36) for x in a_[1:]]
+mvc, nbc = {}, {}
+RS_YEARS = 3                                         # "rising stars": first competed this year or in the previous 2
+RS_ROWS = {'w': 100, 'c': 100, 'n': 50}
+rs_min = today_d.year - RS_YEARS + 1
+rsc = {}
+
 for m, vals, desc in METRICS:
     for s in range(3):
         v = vals[s]
@@ -261,7 +292,76 @@ for m, vals, desc in METRICS:
             r = tie(st, v[i])
             prank[m][s][i] = r
             if r <= SCOPE_LIMIT[key[0]]:
-                lb.setdefault(key, {}).setdefault(m, []).append([r, people[i], pname.get(people[i], people[i]), v[i], p_country[i]])
+                row_ = [r, people[i], pname.get(people[i], people[i]), v[i], p_country[i]]
+                if m in SNAPM:
+                    pv_ = basesnap.get(people[i])
+                    row_.append(pv_[SNAPM.index(m) * 3 + s] if pv_ else 0)
+                lb.setdefault(key, {}).setdefault(m, []).append(row_)
+            if m in SNAPM and r <= MV_LIMIT[key[0]]:
+                mvc.setdefault((key, m), []).append((r, i))
+            if m in SNAPM and people[i][:4].isdigit() and int(people[i][:4]) >= rs_min:
+                rsc.setdefault((key, m), []).append((r, i, v[i]))
+            if m in ('k', 'C') and r <= NB_LIMIT:
+                nbc.setdefault((m, key), []).append((r, i, v[i]))
+
+# ---------- today's snapshot, movers lists and "around you" files ----------
+with gzip.open(os.path.join(hist_dir, f'ranks_{today_s}.txt.gz'), 'wt', encoding='utf-8', compresslevel=9) as f_:
+    for i, pid in enumerate(people):
+        f_.write(pid + ',' + ','.join(b36(prank[m][s][i]) for m in SNAPM for s in range(3)) + '\n')
+for d_, p_ in snap_files.items():
+    if d_ < today_d - datetime.timedelta(days=10):
+        os.remove(p_)
+
+mvdir = os.path.join(out_dir, 'mv'); shutil.rmtree(mvdir, ignore_errors=True); os.makedirs(mvdir)
+mv_out = {}
+for (key, m), lst in mvc.items():
+    s_ = {'w': 0, 'c': 1, 'n': 2}[key[0]]; ix = SNAPM.index(m) * 3 + s_
+    ups, downs = [], []
+    for r, i in lst:
+        pv_ = basesnap.get(people[i])
+        if not pv_:
+            continue
+        d_ = pv_[ix] - r
+        row_ = [people[i], pname.get(people[i], people[i]), p_country[i], r, pv_[ix]]
+        if d_ > 0: ups.append((-d_, r, row_))
+        elif d_ < 0: downs.append((d_, r, row_))
+    ups.sort(key=lambda t: (t[0], t[1])); downs.sort(key=lambda t: (t[0], t[1]))
+    n_ = MV_ROWS[key[0]]
+    mv_out.setdefault(key, {})[m] = {'up': [t[2] for t in ups[:n_]], 'down': [t[2] for t in downs[:n_]]}
+for (kind, ix), data in mv_out.items():
+    with open(os.path.join(mvdir, 'world.json' if kind == 'w' else f'{kind}{ix}.json'), 'w', encoding='utf-8') as f_:
+        json.dump(data, f_, ensure_ascii=False, separators=(',', ':'))
+
+nbdir = os.path.join(out_dir, 'nb'); shutil.rmtree(nbdir, ignore_errors=True); os.makedirs(nbdir)
+for (m, key), lst in nbc.items():
+    fnk = 'w' if key[0] == 'w' else f'{key[0]}{key[1]}'
+    by_chunk = {}
+    for r, i, val in lst:
+        by_chunk.setdefault((r - 1) // NB_CHUNK, []).append('|'.join([str(r), people[i], pname.get(people[i], people[i]).replace('|', '/').replace('\t', ' '), b36(p_country[i]), (f'{val:.2f}' if m == 'k' else str(val))]))
+    for c_, lines_ in by_chunk.items():
+        with open(os.path.join(nbdir, f'{m}_{fnk}_{c_}.txt'), 'w', encoding='utf-8') as f_:
+            f_.write('\n'.join(lines_))
+del mvc, nbc
+
+rsdir = os.path.join(out_dir, 'rs'); shutil.rmtree(rsdir, ignore_errors=True); os.makedirs(rsdir)
+rs_out = {}
+for (key, m), lst in rsc.items():
+    lst.sort(key=lambda t: (t[0], t[1]))
+    for n_ in range(1, RS_YEARS + 1):
+        y0 = today_d.year - n_ + 1
+        sel = [t for t in lst if int(people[t[1]][:4]) >= y0][:RS_ROWS[key[0]]]
+        rs_out.setdefault(key, {}).setdefault(m, {})[str(n_)] = [[people[i], pname.get(people[i], people[i]), p_country[i], r, val] for r, i, val in sel]
+for (kind, ix), data in rs_out.items():
+    with open(os.path.join(rsdir, 'world.json' if kind == 'w' else f'{kind}{ix}.json'), 'w', encoding='utf-8') as f_:
+        json.dump(data, f_, ensure_ascii=False, separators=(',', ':'))
+for kind_, n_all in (('c', len(conts)), ('n', len(countries))):
+    for ix_ in range(n_all):
+        fp_ = os.path.join(rsdir, f'{kind_}{ix_}.json')
+        if not os.path.exists(fp_):
+            open(fp_, 'w').write('{}')
+if not os.path.exists(os.path.join(rsdir, 'world.json')):
+    open(os.path.join(rsdir, 'world.json'), 'w').write('{}')
+del rsc, rs_out
 
 # ---------- write leaderboards ----------
 shutil.rmtree(os.path.join(out_dir, 'lb'), ignore_errors=True)
@@ -279,6 +379,8 @@ meta = {
     'updated': stamp, 'people': NP,
     'events': EV, 'names': [n for _, n in EVENTS], 'avg': HAS_AVG,
     'conts': conts, 'countries': [[c, cont_idx_of_country[i]] for i, c in enumerate(countries)],
+    'mv': {'since': base_date.isoformat() if base_date else '', 'limit': MV_LIMIT, 'nb_limit': NB_LIMIT, 'nb_chunk': NB_CHUNK},
+    'rs': {'year': today_d.year, 'n': RS_YEARS},
     'rec': rec, 'grid': grid, 'cntw': cnt['w'], 'grid_at': GRID, 'excl': sorted(EXCL),
     'pop': {'w': NP, 'c': [POPC.get(i, 0) for i in range(len(conts))], 'n': [POPN.get(i, 0) for i in range(len(countries))]},
     'files': {'w': 'world.json', 'c': {str(i): f'c{i}.json' for i in range(len(conts)) if ('c', i) in files},
@@ -327,7 +429,8 @@ for i, pid in enumerate(people):
         if any(f[1:]):
             evs.append(','.join(f))
     nm = pname.get(pid, pid).replace('|', '/').replace('\t', ' ')
-    shards[shard_of(pid)].append('|'.join([pid, nm, b36(p_country[i]), ','.join(b36(x) for x in head), ';'.join(evs)]))
+    pv_ = basesnap.get(pid)
+    shards[shard_of(pid)].append('|'.join([pid, nm, b36(p_country[i]), ','.join(b36(x) for x in head), ';'.join(evs), ','.join(b36(x) for x in pv_) if pv_ else '']))
     line = pid + '\t' + nm + '\t' + countries[p_country[i]]
     seen = set()
     for tok in re.split(r'[^\w]+', fold(nm)):
