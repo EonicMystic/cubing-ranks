@@ -83,14 +83,17 @@ for idx, p in rows('results'):
         d = pr[1][e]
         if a < d.get(pid, 1 << 60): d[pid] = a
 
-pname, pcty = {}, {}
+GENDER = os.environ.get('RANK_GENDER', '')       # '', 'm', 'f' or 'o': rank only people of that group (used for the gender filters)
+pname, pcty, pgen = {}, {}, {}
 for idx, p in rows('persons'):
     w = p[idx['wca_id']]
     if p[idx['sub_id']] == '1' or w not in pname:
         pname[w] = p[idx['name']]
         pcty[w] = p[idx['country_id']]
+        g_ = p[idx['gender']] if 'gender' in idx else ''
+        pgen[w] = g_ if g_ in ('m', 'f') else 'o'
 
-people = sorted({pid for k in (0, 1) for e in range(NE) for pid in pr[k][e] if pid in pcty and pcty[pid] in NIDX})
+people = sorted({pid for k in (0, 1) for e in range(NE) for pid in pr[k][e] if pid in pcty and pcty[pid] in NIDX and (not GENDER or pgen.get(pid) == GENDER)})
 PI = {pid: i for i, pid in enumerate(people)}
 NP = len(people)
 p_country = [NIDX[pcty[pid]] for pid in people]
@@ -145,8 +148,9 @@ for k in (0, 1):
         cx_d = array('I', [cx_val[0]] + [(cx_val[j] - cx_val[j - 1]) & 0xFFFFFFFF for j in range(1, len(cx_val))])
         ob, db = cx_ord.tobytes(), cx_d.tobytes()
         blob = struct.pack('<I', len(items)) + ob[0::4] + ob[1::4] + ob[2::4] + db[0::4] + db[1::4] + db[2::4] + db[3::4]
-        with gzip.GzipFile(os.path.join(cxdir, f'{e}_{k}.gz'), 'wb', compresslevel=9, mtime=0) as gz:
-            gz.write(blob)
+        if not GENDER:
+            with gzip.GzipFile(os.path.join(cxdir, f'{e}_{k}.gz'), 'wb', compresslevel=9, mtime=0) as gz:
+                gz.write(blob)
         for v, i in items:
             c, n = p_cont[i], p_country[i]
             for key, lim in ((('w', 0), EV_LIMIT['w']), (('c', c), EV_LIMIT['c']), (('n', n), EV_LIMIT['n'])):
@@ -294,20 +298,20 @@ for m, vals, desc in METRICS:
             prank[m][s][i] = r
             if r <= SCOPE_LIMIT[key[0]]:
                 row_ = [r, people[i], pname.get(people[i], people[i]), v[i], p_country[i]]
-                if m in SNAPM:
+                if m in SNAPM and not GENDER:
                     pv_ = basesnap.get(people[i])
                     row_.append(pv_[SNAPM.index(m) * 3 + s] if pv_ else 0)
                 lb.setdefault(key, {}).setdefault(m, []).append(row_)
-            if m in SNAPM and r <= MV_LIMIT[key[0]]:
+            if m in SNAPM and not GENDER and r <= MV_LIMIT[key[0]]:
                 mvc.setdefault((key, m), []).append((r, i))
-            if m in SNAPM and people[i][:4].isdigit() and int(people[i][:4]) >= rs_min:
+            if m in SNAPM and not GENDER and people[i][:4].isdigit() and int(people[i][:4]) >= rs_min:
                 rsc.setdefault((key, m), []).append((r, i, v[i]))
-            if m in ('k', 'C') and r <= NB_LIMIT:
+            if m in ('k', 'C') and not GENDER and r <= NB_LIMIT:
                 nbc.setdefault((m, key), []).append((r, i, v[i]))
 
 # ---------- today's snapshot, movers lists and "around you" files ----------
 with gzip.open(os.path.join(hist_dir, f'ranks_{today_s}.txt.gz'), 'wt', encoding='utf-8', compresslevel=9) as f_:
-    for i, pid in enumerate(people):
+    for i, pid in enumerate(people if not GENDER else []):
         f_.write(pid + ',' + ','.join(b36(prank[m][s][i]) for m in SNAPM for s in range(3)) + '\n')
 for d_, p_ in snap_files.items():
     if d_ < today_d - datetime.timedelta(days=10):
@@ -379,6 +383,18 @@ for (kind, ix), data in lb.items():
     files[(kind, ix)] = fn
     with open(os.path.join(out_dir, 'lb', fn), 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+
+if GENDER:
+    # the gender runs only need the leaderboards and the per-event lists; every file name the site may ask for must exist
+    for kind_, n_all in (('c', len(conts)), ('n', len(countries))):
+        for ix_ in range(n_all):
+            fp_ = os.path.join(out_dir, 'lb', f'{kind_}{ix_}.json')
+            if not os.path.exists(fp_): open(fp_, 'w').write('{}')
+    if not os.path.exists(os.path.join(out_dir, 'lb', 'world.json')): open(os.path.join(out_dir, 'lb', 'world.json'), 'w').write('{}')
+    for d_ in ('mv', 'nb', 'rs', 'cx'):
+        shutil.rmtree(os.path.join(out_dir, d_), ignore_errors=True)
+    print('gender', GENDER, ':', NP, 'people')
+    sys.exit(0)
 
 from collections import Counter
 POPC, POPN = Counter(p_cont), Counter(p_country)
