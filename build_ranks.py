@@ -252,6 +252,7 @@ def scope_key(s, i):
 SNAPM = ['k', 'S', 'A', 'C']                       # metrics with movement tracking (all 17 events)
 MV_LIMIT = {'w': 5000, 'c': 5000, 'n': 1000}       # movers lists cover people currently inside these ranks
 MV_ROWS = {'w': 100, 'c': 100, 'n': 50}
+MV_CUTS = {'w': [100, 500, 1000, 5000], 'c': [100, 500, 1000, 5000], 'n': [50, 100, 250, 500, 1000]}   # "only count people currently ranked within the top N"
 NB_LIMIT, NB_CHUNK = 25000, 500                     # "around you" files: top 25,000 per scope, 500 per file
 hist_dir = sys.argv[3] if len(sys.argv) > 3 else out_dir.rstrip('/') + '_history'
 os.makedirs(hist_dir, exist_ok=True)
@@ -327,7 +328,7 @@ for (key, m), lst in mvc.items():
         elif d_ < 0: downs.append((d_, r, row_))
     ups.sort(key=lambda t: (t[0], t[1])); downs.sort(key=lambda t: (t[0], t[1]))
     n_ = MV_ROWS[key[0]]
-    mv_out.setdefault(key, {})[m] = {'up': [t[2] for t in ups[:n_]], 'down': [t[2] for t in downs[:n_]]}
+    mv_out.setdefault(key, {})[m] = {str(cut): {'up': [t[2] for t in ups if t[1] <= cut][:n_], 'down': [t[2] for t in downs if t[1] <= cut][:n_]} for cut in MV_CUTS[key[0]]}
 for (kind, ix), data in mv_out.items():
     with open(os.path.join(mvdir, 'world.json' if kind == 'w' else f'{kind}{ix}.json'), 'w', encoding='utf-8') as f_:
         json.dump(data, f_, ensure_ascii=False, separators=(',', ':'))
@@ -385,7 +386,7 @@ meta = {
     'updated': stamp, 'people': NP,
     'events': EV, 'names': [n for _, n in EVENTS], 'avg': HAS_AVG,
     'conts': conts, 'countries': [[c, cont_idx_of_country[i]] for i, c in enumerate(countries)],
-    'mv': {'since': base_date.isoformat() if base_date else '', 'limit': MV_LIMIT, 'nb_limit': NB_LIMIT, 'nb_chunk': NB_CHUNK},
+    'mv': {'since': base_date.isoformat() if base_date else '', 'limit': MV_LIMIT, 'cuts': MV_CUTS, 'nb_limit': NB_LIMIT, 'nb_chunk': NB_CHUNK},
     'rs': {'year': today_d.year, 'n': RS_YEARS},
     'rec': rec, 'grid': grid, 'cntw': cnt['w'], 'grid_at': GRID, 'excl': sorted(EXCL),
     'pop': {'w': NP, 'c': [POPC.get(i, 0) for i in range(len(conts))], 'n': [POPN.get(i, 0) for i in range(len(countries))]},
