@@ -138,6 +138,7 @@ try { profile = JSON.parse(store("profile") || "null"); } catch (e) { profile = 
 if (profile && !profile.id) profile = null;
 
 const ST = {
+  gender: ["a", "m", "f", "o"].includes(store("gender")) ? store("gender") : "a",
   tab: "sum", nb: store("nb") === "1", sel: null, imp: +store("imp") || 5, kind: store("kind") || "C", scope: store("scope") || "w", cont: +store("cont") || 0, country: store("country"),
 };
 const EV_SHORT = ["3x3", "2x2", "4x4", "5x5", "6x6", "7x7", "3BLD", "FMC", "OH", "Clock", "Mega", "Pyra", "Skewb", "SQ-1", "4BLD", "5BLD", "MBLD"];
@@ -254,10 +255,17 @@ async function loadMeta() {
     ST.country = us >= 0 ? us : 0;
   } else ST.country = +ST.country;
 }
+const GLABEL = { a: "", m: "Men", f: "Women", o: "Other" };
+const gdir = () => ST.gender === "a" ? "" : "g/" + ST.gender + "/";
+function genderSeg(rerender) {
+  return el("div", { class: "row" }, el("div", { class: "seg" }, [["a", "All"], ["m", "Men"], ["f", "Women"], ["o", "Other"]].map(([k, l]) =>
+    el("button", { "aria-pressed": ST.gender === k ? "true" : "false", onclick: () => { ST.gender = k; store("gender", k); rerender(); } }, l))));
+}
 async function loadLB(scope, idx) {
   const f = scope === "w" ? META.files.w : META.files[scope][idx];
-  if (!lbCache.has(f)) lbCache.set(f, getRetry("lb/" + f, true));
-  return lbCache.get(f);
+  const u = gdir() + "lb/" + f;
+  if (!lbCache.has(u)) lbCache.set(u, getRetry(u, true));
+  return lbCache.get(u);
 }
 async function loadShard(id) {
   const n = shardOf(id);
@@ -493,10 +501,12 @@ async function renderBoard(metric) {
   }
   head.push(scopeControls(draw));
   if (ST.view === "mv") { card.append(...head, box); view.append(card); return renderMovers(metric, card, box); }
+  head.push(genderSeg(draw));
   head.push(eventPicker(draw));
   card.append(...head, box);
   view.append(card);
   const mode = selMode();
+  if (mode === "custom" && ST.gender !== "a") { box.textContent = "Gender filters work with all events or No blindfolded. Set the gender to All to use a custom combination."; return; }
   const key = (metric === "k" ? "k" : ST.kind) + (mode === "nb" ? "2" : "");
   let lb, cmine = null;
   const mySeq = (renderBoard.seq = (renderBoard.seq || 0) + 1);
@@ -511,7 +521,7 @@ async function renderBoard(metric) {
   } else {
     try { lb = (await loadLB(ST.scope, scopeIdx()))[key]; } catch (e) { box.className = "err"; box.textContent = "Couldn't load this list. Try again in a moment."; return; }
   }
-  if (!lb || !lb.length) { box.textContent = "No ranked competitors here yet."; return; }
+  if (!lb || !lb.length) { box.textContent = ST.gender === "a" ? "No ranked competitors here yet." : "No ranked " + GLABEL[ST.gender].toLowerCase() + " competitors here yet."; return; }
   const me = profile && profile.id;
   const t = el("table");
   const cols = ["#", "Name", metric === "k" ? "Kinch" : "Sum"];
@@ -536,18 +546,18 @@ async function renderBoard(metric) {
   const shareBtn = el("button", { class: "btn", style: "margin:10px 0 0 8px", onclick: e => {
     const rows = lb.slice(0, 10).map((r, i) => { const tied = (lb[i - 1] && lb[i - 1][0] === r[0]) || (lb[i + 1] && lb[i + 1][0] === r[0]);
       return [(tied ? "T-" : "") + r[0], r[2], metric === "k" ? r[3].toFixed(2) : n0(r[3])]; });
-    saveList(e.target, "Top 10 · " + scopeName(), (metric === "k" ? "Kinch Ranks" : "Sum of Ranks · " + ({ S: "Single", A: "Average", C: "Combined" })[ST.kind]) +
+    saveList(e.target, "Top 10 · " + scopeName() + (ST.gender === "a" ? "" : " · " + GLABEL[ST.gender]), (metric === "k" ? "Kinch Ranks" : "Sum of Ranks · " + ({ S: "Single", A: "Average", C: "Combined" })[ST.kind]) +
       (mode === "nb" ? " · no blindfolded" : mode === "custom" ? " · " + ST.sel.filter(Boolean).length + " events" : ""), rows, "cubing-ranks-top10.png"); } }, "Save top 10 image");
   card.append(shareBtn);
   const lim = lb.length;
-  card.append(el("p", { class: "note" }, "Top " + lim + " for " + scopeName() + ". " +
+  card.append(el("p", { class: "note" }, "Top " + lim + " for " + scopeName() + (ST.gender === "a" ? "" : " (" + GLABEL[ST.gender].toLowerCase() + " only, ranked among each other)") + ". " +
     (metric === "k" ? "Kinch score is the average of your per-event scores (record ÷ your PR, " + ST.sel.filter(Boolean).length + " events, missing events score 0)."
       : "Lower is better. Events you haven't done count as one rank past the last ranked person.") +
     (mode === "nb" ? " Blindfolded events and Multi-Blind are left out." : mode === "custom" ? " Custom combination of " + ST.sel.filter(Boolean).length + " events." : "") +
     " Tap anyone to open their profile."));
   if (me && mode === "custom") {
     if (cmine && !lb.some(r => r[1] === me)) card.append(el("p", { class: "note" }, "You (" + profile.name + ") are " + nth(cmine.rank) + " here."));
-  } else if (me) {
+  } else if (me && ST.gender === "a") {
     const p = await loadPerson(me).catch(() => null);
     if (p) {
       const s = ST.scope === "w" ? 0 : ST.scope === "c" ? 1 : 2;
@@ -805,13 +815,13 @@ async function renderEvents() {
   const kk = META.avg[ev] ? k : 0;
   const seg = el("div", { class: "seg" }, [["Single", 0], ["Average", 1]].map(([l, v]) =>
     el("button", { "aria-pressed": kk === v ? "true" : "false", disabled: v === 1 && !META.avg[ev] ? "" : null, onclick: () => { store("evk", v); draw(); } }, l)));
-  card.append(el("div", { class: "row" }, evSel, seg), scopeControls(draw));
+  card.append(el("div", { class: "row" }, evSel, seg), scopeControls(draw), genderSeg(draw));
   card.querySelectorAll("button").forEach(b => { if (b.textContent.includes("No blindfolded")) b.remove(); });
   const box = el("div", { class: "loading" }, "Loading…");
   card.append(box); view.append(card);
   const sk = ST.scope === "w" ? "w" : (ST.scope === "c" ? "c" + ST.cont : "n" + ST.country);
   let txt;
-  try { txt = await getRetry("ev/" + ev + "_" + kk + "_" + sk + ".txt"); }
+  try { txt = await getRetry(gdir() + "ev/" + ev + "_" + kk + "_" + sk + ".txt"); }
   catch (e) { box.className = "loading"; box.textContent = "No ranked results here yet."; return; }
   const rows = txt.split("\n").filter(Boolean).map(l => { const f = l.split("|"); return { id: f[0], name: f[1], ctry: b36(f[2]), v: b36(f[3]) }; });
   let prev = null, rk = 0;
@@ -831,7 +841,7 @@ async function renderEvents() {
     shown = end; more.style.display = shown >= rows.length ? "none" : "";
   };
   box.replaceWith(t); add(); card.append(more,
-    el("p", { class: "note" }, "Top " + n0(rows.length) + " for " + META.names[ev] + " " + (kk ? "average" : "single") + " in " + scopeName() + ". Ties share a rank."));
+    el("p", { class: "note" }, "Top " + n0(rows.length) + " for " + META.names[ev] + " " + (kk ? "average" : "single") + " in " + scopeName() + (ST.gender === "a" ? "" : " among " + GLABEL[ST.gender].toLowerCase()) + ". Ties share a rank."));
 }
 
 /* ---------- where could you gain the most? ---------- */
@@ -1014,7 +1024,7 @@ function renderAbout() {
     el("p", {}, el("b", {}, "Sum of Ranks. "), "Add up your rank in every event. Single uses your best single in all 17 events, Average uses your best average in the 16 events that have one, and Combined adds both. If you haven't done an event, you're given one rank past the last ranked person in that event, so skipping an event never helps. Lower is better. Ties share the best rank."),
     el("p", {}, el("b", {}, "Kinch Ranks. "), "For each event, your score is the record ÷ your personal best × 100 (so the record holder scores 100). Your Kinch score is the average of all 17 events, with 0 for events you haven't done. Events use averages, except the blindfolded events (best of single or average ratio), Fewest Moves (average), and Multi-Blind (points and time). Higher is better."),
     el("p", {}, el("b", {}, "Continent and country. "), "The same math applies inside each region: the record is the best in that region, and ranks are among people from that region."),
-    el("p", {}, "The No blindfolded option leaves out 3x3, 4x4 and 5x5 Blindfolded and Multi-Blind (Kinch then averages 13 events). The Events tab is the standard single and average rankings for each event, deep lists for the world, continents and countries. Rankings are built nightly from the WCA results export. Sum of Ranks and Kinch lists show the top 1,000 for the world and continents and the top 500 for countries; Lookup works for everyone. Arrows show how many places someone moved since the last comparison day (about a week back once history builds up) in the all-events rankings. Biggest movers lists the largest climbs and drops among the top 5,000 by default (you can narrow it to the top 100, 500 or 1,000), the Rising tab ranks people who started competing in the last three years, Around you shows the people ranked next to you, and My list keeps people you follow on this device. You can also compare two people or save a shareable image there."),
+    el("p", {}, "The No blindfolded option leaves out 3x3, 4x4 and 5x5 Blindfolded and Multi-Blind (Kinch then averages 13 events). The Events tab is the standard single and average rankings for each event, deep lists for the world, continents and countries. Rankings are built nightly from the WCA results export. Sum of Ranks and Kinch lists show the top 1,000 for the world and continents and the top 500 for countries; The Men, Women and Other filters rank people only against others in the same group (Other includes anyone whose WCA profile doesn't say male or female); Kinch then uses the best result in that group as the record. Lookup works for everyone. Arrows show how many places someone moved since the last comparison day (about a week back once history builds up) in the all-events rankings. Biggest movers lists the largest climbs and drops among the top 5,000 by default (you can narrow it to the top 100, 500 or 1,000), the Rising tab ranks people who started competing in the last three years, Around you shows the people ranked next to you, and My list keeps people you follow on this device. You can also compare two people or save a shareable image there."),
     el("button", { class: "btn", onclick: () => go("#lookup") }, "Back")));
 }
 
