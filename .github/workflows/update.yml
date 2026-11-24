@@ -43,6 +43,12 @@ jobs:
           cp index.html site/index.html
           cp ranks-preview.png site/ranks-preview.png || echo "no preview image found, skipping"
 
+      - name: Build gender rankings
+        run: |
+          for g in m f o; do
+            RANK_GENDER=$g python3 build_ranks.py "$RUNNER_TEMP/export.zip" "site/g/$g" "$RUNNER_TEMP/ghist_$g"
+          done
+
       - name: Check the site folder
         run: |
           ls -la site
@@ -54,6 +60,7 @@ jobs:
           test "$(ls site/mv | wc -l)" -gt 100
           test "$(ls site/nb | wc -l)" -gt 500
           test "$(ls site/rs | wc -l)" -gt 100
+          for g in m f o; do test -s "site/g/$g/lb/world.json"; test "$(ls site/g/$g/ev | wc -l)" -gt 100; done
           test "$(ls "$RUNNER_TEMP/hist" | wc -l)" -ge 1
 
       - name: Save rank history
