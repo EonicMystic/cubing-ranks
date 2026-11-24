@@ -83,7 +83,7 @@ for idx, p in rows('results'):
         d = pr[1][e]
         if a < d.get(pid, 1 << 60): d[pid] = a
 
-GENDER = os.environ.get('RANK_GENDER', '')       # '', 'm', 'f' or 'o': rank only people of that group (used for the gender filters)
+GENDER = os.environ.get('RANK_GENDER', '')       # '', 'm' or 'f': rank only people of that group (used for the gender filters)
 pname, pcty, pgen = {}, {}, {}
 for idx, p in rows('persons'):
     w = p[idx['wca_id']]
